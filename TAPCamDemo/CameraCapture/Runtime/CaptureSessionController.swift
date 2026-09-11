@@ -720,6 +720,15 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
     }
 
+    func isVideoRecordingPrepared() async -> Bool {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [self] in
+                continuation.resume(returning: preparedVideoRecordingGraph != nil
+                    && shouldRunSession && isSceneActive && session.isRunning && !session.isInterrupted)
+            }
+        }
+    }
+
     func stopVideoRecording(
         reason: TAPVideoManifest.StopReason
     ) async throws -> TAPVideoRecordingArtifact {

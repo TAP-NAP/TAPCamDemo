@@ -28,13 +28,13 @@ struct TAPCameraCapturePresentationTests {
                     startedContinuation.finish()
                 }
             }
-            let requestedTask = coordinator.changeCaptureMode(to: mode,
+            let requestedTask = coordinator.prepareCaptureMode(to: mode,
                 prepareVideoMode: { await operation(.video); return ready },
                 restorePhotoMode: { await operation(.photo) },
                 completion: { completed.append($0) })
             let task = try #require(requestedTask)
             #expect(coordinator.isChangingCaptureMode, "Gate is set before the target mode is published")
-            #expect(coordinator.changeCaptureMode(to: mode,
+            #expect(coordinator.prepareCaptureMode(to: mode,
                 prepareVideoMode: { Issue.record("Duplicate preparation"); return false },
                 restorePhotoMode: { Issue.record("Duplicate restoration") }, completion: { _ in }) == nil)
             var iterator = started.makeAsyncIterator()
@@ -54,7 +54,7 @@ struct TAPCameraCapturePresentationTests {
         var release: CheckedContinuation<Void, Never>?
         var completed = false
         var settled = false
-        let requestedTask = coordinator.changeCaptureMode(to: .video,
+        let requestedTask = coordinator.prepareCaptureMode(to: .video,
             prepareVideoMode: {
                 await withCheckedContinuation { continuation in
                     release = continuation
@@ -75,7 +75,7 @@ struct TAPCameraCapturePresentationTests {
         try #require(release).resume()
         await task.value
         #expect(!coordinator.isChangingCaptureMode && !completed && settled)
-        let requestedRetry = coordinator.changeCaptureMode(to: .video,
+        let requestedRetry = coordinator.prepareCaptureMode(to: .video,
             prepareVideoMode: { true }, restorePhotoMode: {}, completion: { completed = $0 })
         let retry = try #require(requestedRetry)
         await retry.value
@@ -83,7 +83,7 @@ struct TAPCameraCapturePresentationTests {
 
         for mode in CameraCaptureModeOption.allCases {
             var restoredPhoto = false
-            let requestedCancellation = coordinator.changeCaptureMode(to: mode,
+            let requestedCancellation = coordinator.prepareCaptureMode(to: mode,
                 prepareVideoMode: { Issue.record("Cancelled Video preparation started"); return true },
                 restorePhotoMode: { restoredPhoto = true },
                 completion: { _ in Issue.record("Cancelled mode published completion") })
@@ -161,8 +161,9 @@ struct TAPCameraCapturePresentationTests {
         #expect(viewModel.videoPreparationState == .idle, "A retired configuration cannot publish readiness")
     }
 
-    @Test(.timeLimit(.minutes(1))) @MainActor
-    func savedVideoAllowsPreparationBeforeThePendingWorkerFinishes() async throws {
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true]) @MainActor
+    func savedVideoPublishesActualReadinessBeforeThePendingWorkerFinishes(retainsGraph: Bool) async throws {
+        let expectedState: CameraVideoPreparationState = retainsGraph ? .ready : .needsPreparation
         let directory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let fixtureStore = TAPPendingCaptureStore(rootURL: directory.appendingPathComponent("fixture"))
@@ -180,7 +181,7 @@ struct TAPCameraCapturePresentationTests {
         let viewModel = CameraViewModel(capabilityMatrix: CapabilityMatrix(rgbSources: [], depthCandidates: []),
             pendingCaptureStore: store, libraryStore: LibraryMediaStore(),
             videoPosterGenerator: CameraStoppedVideoPosterGenerator {
-                #expect(states.last == .needsPreparation, "Local ingest releases preparation before poster work")
+                #expect(states.last == expectedState, "Local ingest releases preparation before poster work")
                 return Data("poster".utf8)
             })
         let subscription = viewModel.$videoPreparationState.sink { states.append($0) }
@@ -195,6 +196,7 @@ struct TAPCameraCapturePresentationTests {
         var stopReturned = false
         let stop = Task { @MainActor in
             await viewModel.stopVideoRecording(reason: .userStop, finishRecording: { artifact },
+                isVideoModePrepared: { retainsGraph },
                 processPendingCaptures: {
                     let record = try? await store.readRecord(captureID: captureID)
                     #expect(record?.status == .pending)
@@ -213,7 +215,7 @@ struct TAPCameraCapturePresentationTests {
         #expect(!viewModel.isVideoRecording)
         #expect(viewModel.activeVideoRecordingCaptureID == nil)
         #expect(viewModel.videoRecordingTemporaryDirectoryURL == nil)
-        #expect(viewModel.videoPreparationState == .needsPreparation)
+        #expect(viewModel.videoPreparationState == expectedState)
         #expect(await viewModel.prepareVideoMode {})
         #expect(viewModel.videoPreparationState == .ready)
 
@@ -223,7 +225,7 @@ struct TAPCameraCapturePresentationTests {
         await stop.value
         #expect(stopReturned)
         #expect(viewModel.videoPreparationState == .ready, "The previous worker cannot reset new readiness")
-        #expect(states.filter { $0 == .needsPreparation }.count == 1)
+        #expect(states.filter { $0 == .needsPreparation }.count == (retainsGraph ? 0 : 1))
     }
 
     @Test func shutterKeepsTargetModeAppearanceWhilePreparingAndPreservesRecordingSquare() {
@@ -504,7 +506,7 @@ struct TAPCameraCapturePresentationTests {
                     presentation.canResumeCamera = false
                 }
                 #expect(coordinator.isChangingCaptureMode)
-                #expect(coordinator.changeCaptureMode(to: .video,
+                #expect(coordinator.prepareCaptureMode(to: .video,
                     prepareVideoMode: { Issue.record("Overlapping mode preparation"); return true },
                     restorePhotoMode: {}, completion: { _ in }) == nil)
                 try #require(release).resume()
@@ -532,7 +534,7 @@ struct TAPCameraCapturePresentationTests {
         }
         let firstRequest: Task<Void, Never>?
         if startsAsModeChange {
-            firstRequest = coordinator.changeCaptureMode(to: .video,
+            firstRequest = coordinator.prepareCaptureMode(to: .video,
                 prepareVideoMode: prepare, restorePhotoMode: {},
                 completion: { _ in Issue.record("The replaced mode change cannot publish failure") })
         } else {

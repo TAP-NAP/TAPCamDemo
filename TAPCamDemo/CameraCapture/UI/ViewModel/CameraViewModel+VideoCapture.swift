@@ -290,6 +290,7 @@ extension CameraViewModel {
         await stopVideoRecording(
             reason: reason,
             finishRecording: { try await sessionController.stopVideoRecording(reason: reason) },
+            isVideoModePrepared: { await sessionController.isVideoRecordingPrepared() },
             processPendingCaptures: {
                 if let pendingCaptureWorkerClient {
                     await retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
@@ -301,6 +302,7 @@ extension CameraViewModel {
     func stopVideoRecording(
         reason: TAPVideoManifest.StopReason,
         finishRecording: () async throws -> TAPVideoRecordingArtifact,
+        isVideoModePrepared: () async -> Bool,
         processPendingCaptures: () async -> Void
     ) async {
         guard isVideoRecording else {
@@ -339,8 +341,9 @@ extension CameraViewModel {
             TAPDiagnostics.cameraCapture.error("video recording stop failed captureID=\(captureID ?? "none", privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
         }
+        let hasPreparedVideo = await isVideoModePrepared()
         if generation == configurationGeneration, !isPausedForAnalysis {
-            videoPreparationState = .needsPreparation
+            videoPreparationState = hasPreparedVideo ? .ready : .needsPreparation
         }
         guard let record = ingestedRecord else { return }
         await persistVideoPosterIfPossible(for: record)

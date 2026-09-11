@@ -940,14 +940,28 @@ struct CameraView: View {
     private func prepareSelectedVideoModeIfNeeded() {
         guard scenePhase == .active, selectedMode == .video,
               !viewModel.isPausedForAnalysis,
+              !isCameraPathTransitioning, !viewModel.isConfiguringSession,
               viewModel.videoPreparationState == .idle || viewModel.videoPreparationState == .needsPreparation else {
             return
         }
-        selectCaptureMode(.video)
+        let generation = viewModel.configurationGeneration
+        lifecycleCoordinator.prepareCaptureMode(
+            to: .video,
+            prepareVideoMode: { await viewModel.prepareVideoModeIfNeeded() },
+            restorePhotoMode: {},
+            completion: { ready in
+                guard generation == viewModel.configurationGeneration,
+                      scenePhase == .active, !viewModel.isPausedForAnalysis else { return }
+                if !ready {
+                    selectedMode = .photo
+                    showViewfinderHint("Video mode unavailable")
+                }
+            }
+        )
     }
 
     private func selectCaptureMode(_ mode: CameraCaptureModeOption) {
-        guard mode != selectedMode || (mode == .video && viewModel.videoPreparationState != .ready),
+        guard mode != selectedMode,
               !isCameraPathTransitioning, !viewModel.isConfiguringSession else {
             return
         }
@@ -956,7 +970,7 @@ struct CameraView: View {
             return
         }
         let generation = viewModel.configurationGeneration
-        guard lifecycleCoordinator.changeCaptureMode(
+        guard lifecycleCoordinator.prepareCaptureMode(
             to: mode,
             prepareVideoMode: { await viewModel.prepareVideoModeIfNeeded() },
             restorePhotoMode: { await viewModel.teardownPreparedVideoModeIfNeeded() },

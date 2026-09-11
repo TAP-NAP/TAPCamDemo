@@ -31,7 +31,7 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     /// Lock the shutter before publishing the target appearance, then wait for
     /// the actual graph operation. Animation duration never determines readiness.
     @MainActor @discardableResult
-    func changeCaptureMode(
+    func prepareCaptureMode(
         to mode: CameraCaptureModeOption,
         prepareVideoMode: @escaping @MainActor () async -> Bool,
         restorePhotoMode: @escaping @MainActor () async -> Void,
