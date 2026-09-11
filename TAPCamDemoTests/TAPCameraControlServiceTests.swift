@@ -135,6 +135,43 @@ struct TAPCameraControlServiceTests {
         #expect(CameraControlService.clampedZoomFactor(8, minimum: 1, maximum: 5) == 5)
     }
 
+    @Test func continuousZoomAllowsBothDirectionsWithinOneLiveDepthRange() {
+        for (current, target) in [(1.0, 3.2), (3.2, 1.0), (2.0, 2.0)] {
+            #expect(CameraControlService.supportsContinuousZoom(
+                from: current, to: target, minimum: 1, maximum: 5,
+                depthRanges: [1...3.2, 4...5]
+            ))
+        }
+    }
+
+    @Test func continuousZoomRejectsDepthGapsAndDiscreteOnlyEndpoints() {
+        for ranges in [[1.0...2.0, 3.0...4.0], [1.0...1.0, 4.0...4.0], []] {
+            #expect(!CameraControlService.supportsContinuousZoom(
+                from: 4, to: 1, minimum: 1, maximum: 5, depthRanges: ranges
+            ))
+        }
+        #expect(CameraControlService.supportsContinuousZoom(
+            from: 1, to: 1, minimum: 1, maximum: 5, depthRanges: [1...1]
+        ))
+    }
+
+    @Test func continuousZoomRejectsTargetsOutsideLiveDeviceBounds() {
+        for (current, target) in [(1.0, 4.0), (4.0, 2.0), (0.5, 2.0), (2.0, .nan), (.infinity, 2.0), (0.0, 2.0)] {
+            #expect(!CameraControlService.supportsContinuousZoom(
+                from: current, to: target, minimum: 1, maximum: 3,
+                depthRanges: [0...5]
+            ))
+        }
+    }
+
+    @Test func zoomReadbackMustReachTheRequestedTarget() {
+        #expect(CameraControlService.hasReachedZoom(3.2, actual: 3.2))
+        #expect(CameraControlService.hasReachedZoom(3.2, actual: 3.20001))
+        #expect(!CameraControlService.hasReachedZoom(3.2, actual: 3.19))
+        #expect(!CameraControlService.hasReachedZoom(3.2, actual: .nan))
+        #expect(!CameraControlService.hasReachedZoom(.infinity, actual: .infinity))
+    }
+
     @Test func cameraControlServiceClampsRequestedExposureBiasToDeviceRange() throws {
         #expect(CameraControlService.clampedExposureBias(-4, minimum: -2, maximum: 2) == -2)
         #expect(CameraControlService.clampedExposureBias(0.7, minimum: -2, maximum: 2) == 0.7)

@@ -147,6 +147,33 @@ nonisolated enum CameraControlService {
         ))
     }
 
+    static func canRampZoom(_ zoomFactor: Double, on device: AVCaptureDevice) -> Bool {
+        let format = device.activeFormat
+        return supportsContinuousZoom(
+            from: Double(device.videoZoomFactor),
+            to: zoomFactor,
+            minimum: Double(device.minAvailableVideoZoomFactor),
+            maximum: Double(min(device.maxAvailableVideoZoomFactor, format.videoMaxZoomFactor)),
+            depthRanges: format.supportedVideoZoomRangesForDepthDataDelivery.map {
+                Double($0.lowerBound)...Double($0.upperBound)
+            }
+        )
+    }
+
+    static func rampZoom(_ zoomFactor: Double, on device: AVCaptureDevice) throws {
+        try requireSessionQueueAccess()
+        try device.lockForConfiguration()
+        defer { device.unlockForConfiguration() }
+
+        // Recheck the live format and bounds under the device lock. A ramp may
+        // not cross a gap between otherwise valid depth-delivery zoom points.
+        guard canRampZoom(zoomFactor, on: device) else {
+            throw TAPDepthCaptureError.unsupportedZoomFactor
+        }
+        let distance = abs(log2(zoomFactor / Double(device.videoZoomFactor)))
+        device.ramp(toVideoZoomFactor: CGFloat(zoomFactor), withRate: Float(max(distance / 0.35, 1)))
+    }
+
     static func applyActiveDepthDataFormat(
         _ depthFormat: AVCaptureDevice.Format?,
         to device: AVCaptureDevice
@@ -304,6 +331,26 @@ nonisolated enum CameraControlService {
         maximum: Double
     ) -> Double {
         min(max(zoomFactor, minimum), maximum)
+    }
+
+    static func supportsContinuousZoom(
+        from current: Double,
+        to target: Double,
+        minimum: Double,
+        maximum: Double,
+        depthRanges: [ClosedRange<Double>]
+    ) -> Bool {
+        guard current.isFinite, target.isFinite, current > 0, target > 0,
+              minimum.isFinite, maximum.isFinite,
+              min(current, target) >= minimum, max(current, target) <= maximum else {
+            return false
+        }
+        return depthRanges.contains { $0.contains(current) && $0.contains(target) }
+    }
+
+    static func hasReachedZoom(_ target: Double, actual: Double) -> Bool {
+        target.isFinite && actual.isFinite
+            && abs(actual - target) <= max(0.0001, abs(target) * 0.0001)
     }
 
     static func clampedExposureBias(

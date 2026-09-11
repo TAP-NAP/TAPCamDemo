@@ -20,8 +20,12 @@ extension CameraViewModel {
     /// source, and raw depth-safe zoom factor produced by Planning.
     ///
     /// - Tag: SelectReleaseFOV
-    func selectFocalLengthOption(_ option: FocalLengthOption) async {
-        guard !photographerModeState.isTransitioning, !isConfiguringSession else {
+    func selectFocalLengthOption(
+        _ option: FocalLengthOption,
+        beforeImmediateZoom: (@MainActor @Sendable () async throws -> Void)? = nil
+    ) async {
+        guard !photographerModeState.isTransitioning, !isConfiguringSession,
+              !isVideoRecording, !isPreparingVideoMode else {
             return
         }
         guard option.isEnabled else {
@@ -39,7 +43,7 @@ extension CameraViewModel {
         selectedRGBSourceID = option.rgbSource.id
         selectedZoomID = option.zoom.id
         selectedFocalLengthOptionID = option.id
-        await configureCurrentSelection()
+        await configureCurrentSelection(smoothZoom: true, beforeImmediateZoom: beforeImmediateZoom)
     }
 
     func switchCameraPosition() async {
@@ -348,7 +352,10 @@ extension CameraViewModel {
     /// raw `videoZoomFactor`, then the plan is handed to the session controller.
     ///
     /// - Tag: ConfigureCurrentSelection
-    func configureCurrentSelection() async {
+    func configureCurrentSelection(
+        smoothZoom: Bool = false,
+        beforeImmediateZoom: (@MainActor @Sendable () async throws -> Void)? = nil
+    ) async {
         guard !isPausedForAnalysis else {
             return
         }
@@ -444,7 +451,16 @@ extension CameraViewModel {
                 nativePreviewAspectRatio = 3.0 / 4.0
                 return
             }
-            let result = try await sessionController.configure(request)
+            let result = try await sessionController.configure(
+                request,
+                smoothZoom: smoothZoom,
+                beforeImmediateZoom: {
+                    guard generation == self.configurationGeneration, !self.isPausedForAnalysis else {
+                        throw CancellationError()
+                    }
+                    try await beforeImmediateZoom?()
+                }
+            )
 
             guard generation == configurationGeneration, !isPausedForAnalysis else {
                 return

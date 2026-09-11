@@ -60,6 +60,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     private var exposureAdjustingObservation: NSKeyValueObservation?
     private var activeVideoRecordingGraph: ActiveVideoRecordingGraph?
     private var preparedVideoRecordingGraph: PreparedVideoRecordingGraph?
+    private var pendingZoomConfiguration: PendingZoomConfiguration?
     private let runtimeFailureHandlerLock = NSLock()
     private var runtimeFailureHandler: (@Sendable (CaptureSessionRuntimeFailure) -> Void)?
     private let videoRecordingFailureHandlerLock = NSLock()
@@ -181,6 +182,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
 
     private func stopInterruptedMotionRecording() {
         sessionQueue.async { [weak self] in
+            self?.cancelPendingZoomConfiguration()
             self?.activeVideoRecordingGraph?.recorder.stopMotionRecording(recordingError: true)
         }
     }
@@ -198,30 +200,19 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     /// reuse the current graph and apply only raw zoom.
     ///
     /// - Tag: ConfigureSingleCamSession
-    func configure(_ request: SessionConfigurationRequest) async throws -> SessionConfigurationResult {
+    func configure(
+        _ request: SessionConfigurationRequest,
+        smoothZoom: Bool = false,
+        beforeImmediateZoom: (@MainActor @Sendable () async throws -> Void)? = nil
+    ) async throws -> SessionConfigurationResult {
+        if smoothZoom {
+            return try await configureZoom(request, beforeImmediateZoom: beforeImmediateZoom)
+        }
         return try await withCheckedThrowingContinuation { continuation in
-            sessionQueue.async { [self, session, photoOutput, manualFocusPreviewStream] in
+            sessionQueue.async { [self] in
+                cancelPendingZoomConfiguration()
                 do {
-                    discardPreparedVideoRecordingGraphLocked(
-                        session: session,
-                        reason: "configure"
-                    )
-                    let result = try Self.configureSession(
-                        session: session,
-                        photoOutput: photoOutput,
-                        manualFocusPreviewStream: manualFocusPreviewStream,
-                        request: request
-                    )
-                    if request.auxiliaryPreviewPolicy == .manualFocusLoupe {
-                        manualFocusPreviewStream.activate(for: result.device)
-                    } else {
-                        manualFocusPreviewStream.deactivate()
-                    }
-                    observeRuntimeEvents(for: result.device)
-
-                    shouldRunSession = true
-                    startSessionIfNeeded()
-
+                    let result = try applySessionConfiguration(request)
                     continuation.resume(returning: result)
                 } catch {
                     #if DEBUG
@@ -231,6 +222,197 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 }
             }
         }
+    }
+
+    private func applySessionConfiguration(_ request: SessionConfigurationRequest) throws -> SessionConfigurationResult {
+        discardPreparedVideoRecordingGraphLocked(session: session, reason: "configure")
+        let result = try Self.configureSession(
+            session: session, photoOutput: photoOutput,
+            manualFocusPreviewStream: manualFocusPreviewStream, request: request
+        )
+        if request.auxiliaryPreviewPolicy == .manualFocusLoupe {
+            manualFocusPreviewStream.activate(for: result.device)
+        } else {
+            manualFocusPreviewStream.deactivate()
+        }
+        observeRuntimeEvents(for: result.device)
+        shouldRunSession = true
+        startSessionIfNeeded()
+        return result
+    }
+
+    private func configureZoom(
+        _ request: SessionConfigurationRequest,
+        beforeImmediateZoom: (@MainActor @Sendable () async throws -> Void)?
+    ) async throws -> SessionConfigurationResult {
+        let pending = PendingZoomConfiguration(request: request)
+        let result = try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await withCheckedThrowingContinuation { continuation in
+                sessionQueue.async { [self] in
+                    cancelPendingZoomConfiguration()
+                    pending.continuation = continuation
+                    pendingZoomConfiguration = pending
+                    guard !pending.isCancelled, isSceneActive, !session.isInterrupted else {
+                        finishZoomConfiguration(pending, result: .failure(CancellationError()))
+                        return
+                    }
+                    do {
+                        if let result = try reusableZoomConfiguration(for: request) {
+                            pending.device = result.device
+                            pending.observation = result.device.observe(\.isRampingVideoZoom, options: [.new]) {
+                                [weak self, weak pending] _, _ in
+                                self?.sessionQueue.async { [weak self, weak pending] in
+                                    guard let pending else { return }
+                                    self?.finishZoomIfSettled(pending)
+                                }
+                            }
+                            let target = request.capturePlan.zoom?.rawVideoZoomFactor ?? 1
+                            if CameraControlService.hasReachedZoom(target, actual: Double(result.device.videoZoomFactor)) {
+                                finishZoomIfSettled(pending)
+                            } else {
+                                try CameraControlService.rampZoom(target, on: result.device)
+                                sessionQueue.asyncAfter(deadline: .now() + 3) { [weak self, weak pending] in
+                                    guard let pending else { return }
+                                    self?.finishZoomConfiguration(pending, result: .failure(ZoomConfigurationError.timedOut))
+                                }
+                            }
+                        } else if let beforeImmediateZoom {
+                            // Preserve the old preview before discarding even a
+                            // prepared video graph. Continue only on our queue.
+                            pending.presentationTask = Task { @MainActor [weak self, weak pending] in
+                                do {
+                                    try await beforeImmediateZoom()
+                                    self?.sessionQueue.async { [weak self, weak pending] in
+                                        guard let pending else { return }
+                                        self?.configureImmediateZoom(pending)
+                                    }
+                                } catch {
+                                    self?.sessionQueue.async { [weak self, weak pending] in
+                                        guard let pending else { return }
+                                        self?.finishZoomConfiguration(pending, result: .failure(error))
+                                    }
+                                }
+                            }
+                        } else {
+                            configureImmediateZoom(pending)
+                        }
+                    } catch {
+                        finishZoomConfiguration(pending, result: .failure(error))
+                    }
+                }
+            }
+        } onCancel: {
+            pending.cancel()
+            sessionQueue.async { [self] in
+                finishZoomConfiguration(pending, result: .failure(CancellationError()))
+            }
+        }
+        try Task.checkCancellation()
+        return result
+    }
+
+    private func reusableZoomConfiguration(for request: SessionConfigurationRequest) throws -> SessionConfigurationResult? {
+        let plan = request.capturePlan
+        guard session.isRunning, activeVideoRecordingGraph == nil,
+              !plan.resolvedCaptureDevice.isRampingVideoZoom,
+              CameraControlService.canRampZoom(plan.zoom?.rawVideoZoomFactor ?? 1, on: plan.resolvedCaptureDevice) else {
+            return nil
+        }
+        let resolvedOutput = try SingleCamPhotoSettingsFactory.resolvedOutput(
+            photoOutput: photoOutput,
+            activeFormat: Self.targetActiveFormat(for: plan),
+            assumesDepthDeliverySupported: true,
+            outputProfile: request.outputProfile
+        )
+        try resolvedOutput.validateCapturePlanDepthConfiguration(
+            depthDataDeliveryEnabled: plan.captureConfig.depthDataDeliveryEnabled,
+            embedsDepthDataInPhoto: plan.captureConfig.embedsDepthDataInPhoto
+        )
+        let hasAudio = Self.shouldConfigureLivePhotoAudioInput()
+        guard Self.canReuseCurrentGraph(
+            session: session,
+            photoOutput: photoOutput,
+            manualFocusPreviewOutput: manualFocusPreviewStream.videoOutput,
+            plan: plan,
+            resolvedOutput: resolvedOutput,
+            shouldConfigureLivePhotoAudioInput: hasAudio,
+            auxiliaryPreviewPolicy: request.auxiliaryPreviewPolicy
+        ) else { return nil }
+        return Self.makeConfigurationResult(
+            plan: plan, photoOutput: photoOutput, request: request,
+            resolvedOutput: resolvedOutput, livePhotoAudioInputConfigured: hasAudio
+        )
+    }
+
+    private func configureImmediateZoom(_ pending: PendingZoomConfiguration) {
+        guard pendingZoomConfiguration === pending else { return }
+        guard !pending.isCancelled, isSceneActive, !session.isInterrupted else {
+            finishZoomConfiguration(pending, result: .failure(CancellationError()))
+            return
+        }
+        do {
+            let result = try applySessionConfiguration(pending.request)
+            guard CameraControlService.hasReachedZoom(
+                pending.request.capturePlan.zoom?.rawVideoZoomFactor ?? 1,
+                actual: Double(result.device.videoZoomFactor)
+            ) else { throw ZoomConfigurationError.targetNotReached }
+            finishZoomConfiguration(pending, result: .success(result))
+        } catch {
+            finishZoomConfiguration(pending, result: .failure(error))
+        }
+    }
+
+    private func finishZoomIfSettled(_ pending: PendingZoomConfiguration) {
+        guard pendingZoomConfiguration === pending,
+              let device = pending.device, !device.isRampingVideoZoom else { return }
+        do {
+            let target = pending.request.capturePlan.zoom?.rawVideoZoomFactor ?? 1
+            guard CameraControlService.hasReachedZoom(target, actual: Double(device.videoZoomFactor)),
+                  let result = try reusableZoomConfiguration(for: pending.request) else {
+                throw ZoomConfigurationError.targetNotReached
+            }
+            finishZoomConfiguration(pending, result: .success(result))
+        } catch {
+            finishZoomConfiguration(pending, result: .failure(error))
+        }
+    }
+
+    private func cancelPendingZoomConfiguration() {
+        guard let pending = pendingZoomConfiguration else { return }
+        finishZoomConfiguration(pending, result: .failure(CancellationError()))
+    }
+
+    private func finishZoomConfiguration(
+        _ pending: PendingZoomConfiguration,
+        result: Result<SessionConfigurationResult, Error>
+    ) {
+        guard pendingZoomConfiguration === pending else { return }
+        pendingZoomConfiguration = nil
+        pending.observation?.invalidate()
+        pending.presentationTask?.cancel()
+        let completionResult = pending.isCancelled || !isSceneActive || session.isInterrupted
+            ? .failure(CancellationError()) : result
+        if case .failure(let error) = completionResult {
+            if let device = pending.device {
+                // Direct assignment cancels a ramp immediately. The native
+                // cancel API eases out and could continue after configuration ends.
+                do {
+                    try CameraControlService.applyZoom(Double(device.videoZoomFactor), to: device)
+                } catch {
+                    #if DEBUG
+                    TAPDiagnostics.cameraCapture.error("capture session zoom cancellation failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                    #endif
+                }
+            }
+            #if DEBUG
+            if !(error is CancellationError) {
+                TAPDiagnostics.cameraCapture.error("capture session zoom failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+            }
+            #endif
+        }
+        pending.continuation?.resume(with: completionResult)
+        pending.continuation = nil
     }
 
     /// Waits behind all already-enqueued AVFoundation work without mutating the
@@ -294,6 +476,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     func setSceneActive(_ isActive: Bool) {
         sessionQueue.async { [self] in
             isSceneActive = isActive
+            if !isActive { cancelPendingZoomConfiguration() }
             startSessionIfNeeded()
         }
     }
@@ -307,6 +490,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     func stop() {
         sessionQueue.async { [self, session, photoOutput, manualFocusPreviewStream] in
             shouldRunSession = false
+            cancelPendingZoomConfiguration()
             manualFocusPreviewStream.deactivate()
             discardPreparedVideoRecordingGraphLocked(
                 session: session,
@@ -1454,6 +1638,41 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
 
         return min(width, height) / max(width, height)
+    }
+}
+
+/// Only the cancellation bit crosses queues; all other fields belong to the
+/// controller's session queue and are released by its single completion path.
+private nonisolated final class PendingZoomConfiguration: @unchecked Sendable {
+    let request: SessionConfigurationRequest
+    var continuation: CheckedContinuation<SessionConfigurationResult, Error>?
+    var device: AVCaptureDevice?
+    var observation: NSKeyValueObservation?
+    var presentationTask: Task<Void, Never>?
+    private let lock = NSLock()
+    private var cancelled = false
+
+    init(request: SessionConfigurationRequest) { self.request = request }
+
+    var isCancelled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+    }
+}
+
+private nonisolated enum ZoomConfigurationError: LocalizedError {
+    case timedOut
+    case targetNotReached
+
+    var errorDescription: String? {
+        "The camera did not finish changing the field of view."
     }
 }
 

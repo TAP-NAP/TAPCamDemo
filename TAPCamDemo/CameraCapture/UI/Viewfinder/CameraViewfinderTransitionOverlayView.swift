@@ -14,6 +14,7 @@ nonisolated enum CameraViewfinderTransitionPresentation: Equatable, Sendable {
 
     case hidden
     case switchingCaptureMode
+    case switchingFocalLength
     case presented(message: String)
     case failed(message: String)
 
@@ -41,14 +42,14 @@ nonisolated enum CameraViewfinderTransitionPresentation: Equatable, Sendable {
         switch self {
         case .hidden:
             false
-        case .switchingCaptureMode, .presented, .failed:
+        case .switchingCaptureMode, .switchingFocalLength, .presented, .failed:
             true
         }
     }
 
     var message: String? {
         switch self {
-        case .hidden, .switchingCaptureMode:
+        case .hidden, .switchingCaptureMode, .switchingFocalLength:
             nil
         case .presented(let message), .failed(let message):
             message
@@ -60,6 +61,15 @@ nonisolated enum CameraViewfinderTransitionPresentation: Equatable, Sendable {
             return false
         }
         return true
+    }
+
+    var keepsFocalLengthSelector: Bool {
+        switch self {
+        case .hidden, .switchingCaptureMode, .switchingFocalLength:
+            true
+        case .presented, .failed:
+            false
+        }
     }
 }
 

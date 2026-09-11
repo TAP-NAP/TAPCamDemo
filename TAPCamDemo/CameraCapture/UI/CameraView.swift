@@ -705,7 +705,7 @@ struct CameraView: View {
                 showsProfessionalControls: viewModel.isPhotographerModeActive
                     && (cameraPathTransitionPresentation == .hidden
                         || cameraPathTransitionPresentation == .switchingCaptureMode),
-                isInteractionLocked: isCameraPathTransitioning,
+                isInteractionLocked: isCameraPathTransitioning || viewModel.isConfiguringSession,
                 adjustmentControlState: adjustmentControlState,
                 basicEVControlState: basicEVControlState,
                 contentRotation: chromeOrientation.angle
@@ -835,7 +835,7 @@ struct CameraView: View {
             nativePreviewAspectRatio: viewModel.nativePreviewAspectRatio,
             focalLengthOptions: focalLengthDisplayOptions,
             shouldShowFocalLengthSelector: viewModel.shouldShowFocalLengthSelector
-                && !isCameraPathTransitioning,
+                && effectiveCameraPathTransitionPresentation.keepsFocalLengthSelector,
             guideOverlayPreference: CameraGuideOverlayPreference.resolved(rawValue: guideOverlayRawValue),
             previewCropRectNormalized: viewModel.previewCropRectNormalized,
             temporaryFocusEVOffset: temporaryFocusEVOffset,
@@ -949,7 +949,7 @@ struct CameraView: View {
 
     private func selectCaptureMode(_ mode: CameraCaptureModeOption) {
         guard mode != selectedMode || (mode == .video && viewModel.videoPreparationState != .ready),
-              !isCameraPathTransitioning else {
+              !isCameraPathTransitioning, !viewModel.isConfiguringSession else {
             return
         }
         guard !viewModel.isVideoRecording,
@@ -1869,13 +1869,42 @@ struct CameraView: View {
     #endif
 
     private func selectFocalLengthDisplayOption(_ option: CameraFocalLengthDisplayOption) {
-        guard let index = focalLengthOptionIndex(for: option.selectionToken),
+        guard (!option.isSelected || viewModel.activeSessionConfiguration == nil),
+              !isCameraPathTransitioning,
+              !lifecycleCoordinator.isChangingCaptureMode,
+              let index = focalLengthOptionIndex(for: option.selectionToken),
               viewModel.focalLengthOptions.indices.contains(index) else {
             return
         }
         let sourceOption = viewModel.focalLengthOptions[index]
-        Task {
-            await viewModel.selectFocalLengthOption(sourceOption)
+        Task { @MainActor in
+            let transitionToken = UUID()
+            let expectedGeneration = viewModel.configurationGeneration + 1
+            await viewModel.selectFocalLengthOption(sourceOption) {
+                beginCameraPathTransition(.switchingFocalLength, token: transitionToken)
+            }
+            guard viewModel.configurationGeneration == expectedGeneration else { return }
+            if scenePhase == .active, !viewModel.isPausedForAnalysis {
+                if selectedMode == .video, viewModel.activeSessionConfiguration != nil {
+                    let didPrepare = await viewModel.prepareVideoModeIfNeeded()
+                    guard viewModel.configurationGeneration == expectedGeneration else { return }
+                    guard scenePhase == .active, !viewModel.isPausedForAnalysis else {
+                        if cameraPathTransitionToken == transitionToken {
+                            cancelCameraPathTransitionPresentation()
+                        }
+                        return
+                    }
+                    if !didPrepare {
+                        selectedMode = .photo
+                        showViewfinderHint("Video mode unavailable")
+                    }
+                }
+                if cameraPathTransitionToken == transitionToken {
+                    completeCameraPathRuntimeTransition()
+                }
+            } else if cameraPathTransitionToken == transitionToken {
+                cancelCameraPathTransitionPresentation()
+            }
         }
     }
 
@@ -1979,6 +2008,7 @@ struct CameraView: View {
 
     private func switchCameraPosition() {
         guard !isCameraPathTransitioning,
+              !viewModel.isConfiguringSession,
               !lifecycleCoordinator.isChangingCaptureMode,
               !viewModel.isVideoRecording,
               !viewModel.isPreparingVideoMode else {
@@ -2040,13 +2070,14 @@ struct CameraView: View {
     }
 
     private func beginCameraPathTransition(
-        _ presentation: CameraViewfinderTransitionPresentation
+        _ presentation: CameraViewfinderTransitionPresentation,
+        token: UUID = UUID()
     ) {
         cameraPathPreviewWatchdogTask?.cancel()
         cameraPathPreviewWatchdogTask = nil
         pendingPhotographerModePreference = nil
         previewController.retainCurrentAppearance()
-        cameraPathTransitionToken = UUID()
+        cameraPathTransitionToken = token
         cameraPathTransitionRuntimeCompleted = false
         cameraPathTransitionPresentation = presentation
     }
