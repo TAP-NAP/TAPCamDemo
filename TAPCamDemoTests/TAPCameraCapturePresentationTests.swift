@@ -1157,7 +1157,6 @@ struct TAPCameraCapturePresentationTests {
             temporaryFocusEVOffset: 0.3,
             focusMode: .auto,
             focusRuntimeEvent: nil,
-            focusMagnifierPreference: .brief,
             focusLoupePulseID: nil,
             viewfinderEdgeToastMessage: nil,
             contentRotation: .zero,
@@ -1288,7 +1287,6 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraViewfinderHighlightPreference.defaultValue == .yellow)
         #expect(CameraViewfinderHighlightPreference.resolved(rawValue: "titian") == .titian)
         #expect(CameraViewfinderHighlightPreference.resolved(rawValue: "unexpected") == .yellow)
-        #expect(CameraViewfinderHighlightPreference.titian.title == "Akane")
     }
 
     @Test func cameraCaptureModeOptionEnablesPhotoAndVideo() throws {
@@ -1310,11 +1308,6 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraFlashControlMode.auto.captureFlashMode == .auto)
         #expect(CameraFlashControlMode.on.captureFlashMode == .on)
         #expect(CameraFlashControlMode.off.captureFlashMode == .off)
-        #expect(CameraViewfinderControlDefaultPolicy.allCases.map(\.title) == [
-            "Default Off",
-            "Default On",
-            "Remember Last State"
-        ])
     }
 
     @Test func viewfinderControlDefaultPoliciesResolveStartupState() throws {
@@ -1377,6 +1370,57 @@ struct TAPCameraCapturePresentationTests {
         userDefaults.set(true, forKey: CameraLivePhotoPreferences.lastEnabledKey)
         #expect(CameraLivePhotoPreferences.resolvedStartupIsEnabled(in: userDefaults))
 
+    }
+
+    @Test func flashMemoryRetainsAllThreeModesAndDisabledMemoryUsesAuto() throws {
+        let suiteName = "TAPCameraFlashMemoryTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        for mode in CameraFlashControlMode.allCases {
+            defaults.set(mode.rawValue, forKey: CameraFlashControlMode.lastModeKey)
+            defaults.set(
+                CameraViewfinderControlDefaultPolicy.rememberLastState.rawValue,
+                forKey: CameraFlashControlMode.startupPolicyKey
+            )
+            #expect(CameraFlashControlMode.resolvedStartupMode(in: defaults) == mode)
+
+            defaults.set(
+                CameraViewfinderControlDefaultPolicy.defaultOn.rawValue,
+                forKey: CameraFlashControlMode.startupPolicyKey
+            )
+            #expect(CameraFlashControlMode.resolvedStartupMode(in: defaults) == .auto)
+            #expect(defaults.string(forKey: CameraFlashControlMode.lastModeKey) == mode.rawValue)
+        }
+    }
+
+    @Test func livePhotoMemoryRestoresBothStatesAndDisabledMemoryStartsOff() throws {
+        let suiteName = "TAPCameraLivePhotoMemoryTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        for isEnabled in [false, true] {
+            defaults.set(isEnabled, forKey: CameraLivePhotoPreferences.lastEnabledKey)
+            defaults.set(
+                CameraViewfinderControlDefaultPolicy.rememberLastState.rawValue,
+                forKey: CameraLivePhotoPreferences.startupPolicyKey
+            )
+            #expect(CameraLivePhotoPreferences.resolvedStartupIsEnabled(in: defaults) == isEnabled)
+
+            defaults.set(
+                CameraViewfinderControlDefaultPolicy.defaultOff.rawValue,
+                forKey: CameraLivePhotoPreferences.startupPolicyKey
+            )
+            #expect(!CameraLivePhotoPreferences.resolvedStartupIsEnabled(in: defaults))
+            #expect(defaults.bool(forKey: CameraLivePhotoPreferences.lastEnabledKey) == isEnabled)
+        }
+    }
+
+    @Test func gridRestoresItsLastStyleAndFallsBackToThirds() {
+        #expect(CameraGuideOverlayPreference.restoredStyle(rawValue: "centerCross") == .centerCross)
+        #expect(CameraGuideOverlayPreference.restoredStyle(rawValue: "ruleOfThirds") == .ruleOfThirds)
+        #expect(CameraGuideOverlayPreference.restoredStyle(rawValue: "off") == .ruleOfThirds)
+        #expect(CameraGuideOverlayPreference.restoredStyle(rawValue: "unexpected") == .ruleOfThirds)
     }
 
     @Test func cameraCaptureDataUsePreferencesDefaultToLocationOnMicrophoneOff() throws {
@@ -1619,8 +1663,6 @@ struct TAPCameraCapturePresentationTests {
         #expect(!CameraFlashControlMode.lastModeKey.isEmpty)
         #expect(CameraDepthAvailabilityHintPreferences.defaultShowsHints)
         #expect(!CameraDepthAvailabilityHintPreferences.showsHintsKey.isEmpty)
-        #expect(CameraFocusMagnifierPreference.defaultValue == .brief)
-        #expect(!CameraFocusMagnifierPreference.storageKey.isEmpty)
         #expect(CameraLivePhotoPreferences.defaultStartupPolicy == .rememberLastState)
         #expect(!CameraLivePhotoPreferences.startupPolicyKey.isEmpty)
         #expect(!CameraLivePhotoPreferences.defaultLastEnabled)

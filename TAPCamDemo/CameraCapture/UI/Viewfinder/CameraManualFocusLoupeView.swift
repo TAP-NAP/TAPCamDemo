@@ -7,18 +7,14 @@
 import SwiftUI
 import UIKit
 
-/// Geometry for centering a tapped preview pixel inside the MF loupe.
-///
-/// SwiftUI's scale anchor is only the point that remains stationary while the
-/// full-size preview is magnified. It does not move that point to the center of
-/// the smaller clipping viewport. The translation below closes that second
-/// half of the transform while keeping the point in display-preview
-/// coordinates; capture-device coordinates must not be applied a second time.
+/// Shared display-preview geometry for the loupe and its source-region outline.
+/// The crop stays inside the preview at edge taps. Both views use this same
+/// crop; capture-device coordinates must not be applied a second time.
 nonisolated struct CameraManualFocusLoupeTransform: Equatable, Sendable {
     let magnification: CGFloat
+    let loupeSize: CGSize
+    let sourceRect: CGRect
     let centeringOffset: CGSize
-    private let anchor: CGPoint
-    private let previewSize: CGSize
 
     init(
         focusPoint: CameraPreviewFocusPoint,
@@ -30,34 +26,26 @@ nonisolated struct CameraManualFocusLoupeTransform: Equatable, Sendable {
             height: max(previewSize.height, 0)
         )
         self.magnification = max(magnification, 1)
-        self.previewSize = resolvedSize
-        anchor = CGPoint(
-            x: CGFloat(focusPoint.x) * resolvedSize.width,
-            y: CGFloat(focusPoint.y) * resolvedSize.height
+        let loupeWidth = min(max(112, resolvedSize.width * 0.34), resolvedSize.width)
+        loupeSize = CGSize(
+            width: loupeWidth,
+            height: min(loupeWidth * 9.0 / 16.0, resolvedSize.height)
+        )
+        let sourceSize = CGSize(
+            width: loupeSize.width / self.magnification,
+            height: loupeSize.height / self.magnification
+        )
+        sourceRect = CGRect(
+            x: min(max(CGFloat(focusPoint.x) * resolvedSize.width - sourceSize.width / 2, 0),
+                   resolvedSize.width - sourceSize.width),
+            y: min(max(CGFloat(focusPoint.y) * resolvedSize.height - sourceSize.height / 2, 0),
+                   resolvedSize.height - sourceSize.height),
+            width: sourceSize.width,
+            height: sourceSize.height
         )
         centeringOffset = CGSize(
-            width: (0.5 - CGFloat(focusPoint.x)) * resolvedSize.width,
-            height: (0.5 - CGFloat(focusPoint.y)) * resolvedSize.height
-        )
-    }
-
-    /// Mirrors the visual transform used by `CameraPreviewStageView`.
-    ///
-    /// This is intentionally pure so tests can prove that an off-center tapped
-    /// pixel lands at the center of the full preview's clipping coordinate
-    /// system after scale plus translation.
-    func displayedPoint(for sourcePoint: CameraPreviewFocusPoint) -> CGPoint {
-        let source = CGPoint(
-            x: CGFloat(sourcePoint.x) * previewSize.width,
-            y: CGFloat(sourcePoint.y) * previewSize.height
-        )
-        return CGPoint(
-            x: anchor.x
-                + (source.x - anchor.x) * magnification
-                + centeringOffset.width,
-            y: anchor.y
-                + (source.y - anchor.y) * magnification
-                + centeringOffset.height
+            width: (resolvedSize.width / 2 - sourceRect.midX) * self.magnification,
+            height: (resolvedSize.height / 2 - sourceRect.midY) * self.magnification
         )
     }
 }

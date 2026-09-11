@@ -65,6 +65,10 @@ struct DepthAnalyzerSettingsView: View {
     private var photographerModeStartupPolicyRawValue = CameraPhotographerModePreferences.defaultStartupPolicy.rawValue
     @AppStorage(CameraGuideOverlayPreference.storageKey)
     private var guideOverlayRawValue = CameraGuideOverlayPreference.defaultValue.rawValue
+    @AppStorage(CameraGuideOverlayPreference.lastStyleKey)
+    private var lastGuideStyleRawValue = CameraGuideOverlayPreference.defaultStyle.rawValue
+    @AppStorage(CameraLevelPreferences.enabledKey)
+    private var isLevelEnabled = CameraLevelPreferences.defaultEnabled
     @AppStorage(CameraViewfinderHighlightPreference.storageKey)
     private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
     @AppStorage(CameraEVPreferences.resetOnAppLaunchKey)
@@ -78,8 +82,6 @@ struct DepthAnalyzerSettingsView: View {
     private var photoQualityRawValue = CameraPhotoQualityPreference.defaultValue.rawValue
     @AppStorage(CameraDepthAvailabilityHintPreferences.showsHintsKey)
     private var showsDepthAvailabilityHints = CameraDepthAvailabilityHintPreferences.defaultShowsHints
-    @AppStorage(CameraFocusMagnifierPreference.storageKey)
-    private var focusMagnifierRawValue = CameraFocusMagnifierPreference.defaultValue.rawValue
     @AppStorage(DepthAnalyzerPreferences.planeGrowthStrictnessKey)
     private var planeGrowthStrictness = DepthAnalyzerPreferences.defaultPlaneGrowthStrictness
     #endif
@@ -111,6 +113,7 @@ struct DepthAnalyzerSettingsView: View {
                 cameraSettingsSection
                 interfaceSettingsSection
                 dataAndPermissionsSection
+                otherSettingsSection
 
                 #if DEBUG
                 debugCameraControlsSection
@@ -142,7 +145,11 @@ struct DepthAnalyzerSettingsView: View {
                     }
                 }
             }
-            .onAppear(perform: refreshAuthorizationSnapshot)
+            .onAppear {
+                // Align values saved by the former slider with the four choices.
+                depthOverlayOpacity = min(1, max(0.25, (depthOverlayOpacity * 4).rounded() / 4))
+                refreshAuthorizationSnapshot()
+            }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 refreshAuthorizationSnapshot()
@@ -174,28 +181,27 @@ struct DepthAnalyzerSettingsView: View {
 
     private var cameraSettingsSection: some View {
         Section("Camera Settings") {
-            Picker("Output Format", selection: $outputFormatRawValue) {
-                ForEach(CameraOutputFormatPreference.allCases) { format in
-                    Text(LocalizedStringKey(format.title)).tag(format.rawValue)
+            HStack {
+                Text("Output Format")
+                Spacer()
+                Picker("Output Format", selection: $outputFormatRawValue) {
+                    Text("JPEG").tag(CameraOutputFormatPreference.jpeg.rawValue)
+                    Text("HEIC").tag(CameraOutputFormatPreference.heic.rawValue)
                 }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 180)
             }
 
-            Picker("Flash Default", selection: $flashStartupPolicyRawValue) {
-                ForEach(CameraViewfinderControlDefaultPolicy.allCases) { policy in
-                    Text(LocalizedStringKey(policy.title)).tag(policy.rawValue)
-                }
+            Toggle(isOn: memoryBinding($flashStartupPolicyRawValue, fallback: .defaultOn, whenDisabled: .defaultOn)) {
+                Text("Remember Flash").lineLimit(1).minimumScaleFactor(0.85)
             }
 
-            Picker("Live Photo Default", selection: $livePhotoStartupPolicyRawValue) {
-                ForEach(CameraViewfinderControlDefaultPolicy.allCases) { policy in
-                    Text(LocalizedStringKey(policy.title)).tag(policy.rawValue)
-                }
+            Toggle(isOn: memoryBinding($livePhotoStartupPolicyRawValue, fallback: .rememberLastState, whenDisabled: .defaultOff)) {
+                Text("Remember Live Photo").lineLimit(1).minimumScaleFactor(0.85)
             }
 
-            Picker("Photographer Mode Startup", selection: $photographerModeStartupPolicyRawValue) {
-                ForEach(CameraViewfinderControlDefaultPolicy.allCases) { policy in
-                    Text(LocalizedStringKey(policy.title)).tag(policy.rawValue)
-                }
+            Toggle(isOn: memoryBinding($photographerModeStartupPolicyRawValue, fallback: .defaultOff, whenDisabled: .defaultOff)) {
+                Text("Remember Pro Mode").lineLimit(1).minimumScaleFactor(0.85)
             }
 
             Toggle(isOn: $keepScreenAwake) {
@@ -206,21 +212,21 @@ struct DepthAnalyzerSettingsView: View {
                 Label("Reset EV on App Launch", systemImage: "plusminus")
             }
 
-            Toggle(isOn: $returnToCameraOnForeground) {
-                Label("Return to Camera After Background", systemImage: "camera.viewfinder")
-            }
-
             Toggle(isOn: $shutterHapticsEnabled) {
                 Label("Interaction Haptics", systemImage: "iphone.radiowaves.left.and.right")
             }
 
-            Toggle(isOn: shutterSoundSuppressionBinding) {
-                Label("Silent Shutter", systemImage: "speaker.slash")
+            Toggle(isOn: Binding(
+                get: { shutterSoundEnabled || !shutterSoundSuppressionSupported },
+                set: { shutterSoundEnabled = $0 }
+            )) {
+                Label("Shutter Sound", systemImage: "speaker.wave.2")
             }
+            .tint(.green)
             .disabled(!shutterSoundSuppressionSupported)
 
             if !shutterSoundSuppressionSupported {
-                Text("Silent shutter is unavailable on this device or in this region.")
+                Text("Shutter sound cannot be disabled on this device or in this region.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -230,38 +236,88 @@ struct DepthAnalyzerSettingsView: View {
 
     private var interfaceSettingsSection: some View {
         Section("Interface") {
-            VStack(alignment: .leading) {
-                Text("Depth Overlay Strength")
-                Slider(value: $depthOverlayOpacity, in: 0...1)
-                    .accessibilityLabel("Depth Overlay Strength")
-                    .accessibilityValue(Text("\(Int((depthOverlayOpacity * 100).rounded())) percent"))
-            }
+            Toggle("Grid", isOn: gridEnabledBinding)
 
-            Picker("Grid", selection: $guideOverlayRawValue) {
-                ForEach(CameraGuideOverlayPreference.allCases) { guide in
-                    Text(LocalizedStringKey(guide.title)).tag(guide.rawValue)
-                }
-            }
-
-            Picker("Highlight Color", selection: $viewfinderHighlightRawValue) {
-                ForEach(CameraViewfinderHighlightPreference.allCases) { preference in
-                    HStack {
-                        Circle()
-                            .fill(preference.color)
-                            .frame(width: 11, height: 11)
-                        Text(LocalizedStringKey(preference.title))
+            if CameraGuideOverlayPreference.resolved(rawValue: guideOverlayRawValue) != .off {
+                HStack {
+                    Text("Grid Style")
+                    Spacer()
+                    Picker("Grid Style", selection: $guideOverlayRawValue) {
+                        Text("Thirds").tag(CameraGuideOverlayPreference.ruleOfThirds.rawValue)
+                        Text("Center").tag(CameraGuideOverlayPreference.centerCross.rawValue)
                     }
-                    .tag(preference.rawValue)
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 180)
                 }
             }
 
+            Toggle("Level", isOn: $isLevelEnabled)
         }
     }
 
-    private var shutterSoundSuppressionBinding: Binding<Bool> {
+    private var otherSettingsSection: some View {
+        Section("Other Settings") {
+            VStack(alignment: .leading) {
+                Text("Depth Overlay Strength")
+                Picker("Depth Overlay Strength", selection: $depthOverlayOpacity) {
+                    Text(verbatim: "25%").tag(0.25)
+                    Text(verbatim: "50%").tag(0.5)
+                    Text(verbatim: "75%").tag(0.75)
+                    Text(verbatim: "100%").tag(1.0)
+                }
+                .pickerStyle(.segmented)
+            }
+
+            Toggle(isOn: $returnToCameraOnForeground) {
+                Label("Return to Viewfinder on Resume", systemImage: "camera.viewfinder")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+
+            HStack {
+                Text("Highlight Color")
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                Spacer()
+                Picker("Highlight Color", selection: $viewfinderHighlightRawValue) {
+                    Text("Orange Yellow").tag(CameraViewfinderHighlightPreference.yellow.rawValue)
+                    Text("Akane").tag(CameraViewfinderHighlightPreference.titian.rawValue)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 180)
+            }
+        }
+    }
+
+    private func memoryBinding(
+        _ policy: Binding<String>,
+        fallback: CameraViewfinderControlDefaultPolicy,
+        whenDisabled: CameraViewfinderControlDefaultPolicy
+    ) -> Binding<Bool> {
         Binding(
-            get: { !shutterSoundEnabled },
-            set: { shutterSoundEnabled = !$0 }
+            get: {
+                CameraViewfinderControlDefaultPolicy.resolved(
+                    rawValue: policy.wrappedValue,
+                    fallback: fallback
+                ) == .rememberLastState
+            },
+            set: { policy.wrappedValue = ($0 ? .rememberLastState : whenDisabled).rawValue }
+        )
+    }
+
+    private var gridEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { CameraGuideOverlayPreference.resolved(rawValue: guideOverlayRawValue) != .off },
+            set: { isEnabled in
+                if isEnabled {
+                    guideOverlayRawValue = CameraGuideOverlayPreference.restoredStyle(
+                        rawValue: lastGuideStyleRawValue
+                    ).rawValue
+                } else {
+                    lastGuideStyleRawValue = guideOverlayRawValue
+                    guideOverlayRawValue = CameraGuideOverlayPreference.off.rawValue
+                }
+            }
         )
     }
 
@@ -388,13 +444,6 @@ struct DepthAnalyzerSettingsView: View {
 
             Toggle(isOn: $showsDepthAvailabilityHints) {
                 Label("Depth Warnings", systemImage: "rectangle.and.text.magnifyingglass")
-            }
-            .listRowBackground(Self.debugOnlySettingsBackground)
-
-            Picker("Focus Magnifier", selection: $focusMagnifierRawValue) {
-                ForEach(CameraFocusMagnifierPreference.allCases) { preference in
-                    Text(preference.title).tag(preference.rawValue)
-                }
             }
             .listRowBackground(Self.debugOnlySettingsBackground)
 

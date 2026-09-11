@@ -33,7 +33,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>TAPCamDemo can record audio for Live Photos and TAP Videos when audio recording is enabled.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>TAPCamDemo records device orientation and movement with TAP Videos for motion analysis.</string>
+	<string>TAPCam uses device motion for the viewfinder level and records it with TAP Video to describe camera movement.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>TAPCamDemo saves depth photos and TAP Videos into the TAPCamDepth photo album.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

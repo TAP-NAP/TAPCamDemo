@@ -62,6 +62,7 @@
       }
     },
     "%lld percent" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -693,13 +694,13 @@
         }
       }
     },
-    "Center Cross" : {
-      "extractionState" : "stale",
+    "Center" : {
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "中心十字线"
+            "value" : "中心"
           }
         }
       }
@@ -854,28 +855,6 @@
         }
       }
     },
-    "Default Off" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "默认关闭"
-          }
-        }
-      }
-    },
-    "Default On" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "默认开启"
-          }
-        }
-      }
-    },
     "Delete" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1017,6 +996,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "检测到的平面置信度为百分之 %lld"
+          }
+        }
+      }
+    },
+    "Dismiss focus magnifier" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收起对焦放大窗"
           }
         }
       }
@@ -1190,33 +1180,12 @@
         }
       }
     },
-    "Flash Default" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "闪光灯默认状态"
-          }
-        }
-      }
-    },
     "Flash unavailable" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "闪光灯不可用"
-          }
-        }
-      }
-    },
-    "Focus Magnifier" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "对焦放大镜"
           }
         }
       }
@@ -1275,12 +1244,34 @@
         }
       }
     },
+    "Grid Style" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "网格类型"
+          }
+        }
+      }
+    },
     "Growing plane region" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在扩展平面区域"
+          }
+        }
+      }
+    },
+    "HEIC" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HEIC"
           }
         }
       }
@@ -1356,6 +1347,17 @@
         }
       }
     },
+    "JPEG" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "JPEG"
+          }
+        }
+      }
+    },
     "Keep Screen Awake" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1426,6 +1428,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "图例"
+          }
+        }
+      }
+    },
+    "Level" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "水平仪"
+          }
+        }
+      }
+    },
+    "Level aligned" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "水平已对齐"
+          }
+        }
+      }
+    },
+    "Level tilted" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "水平未对齐"
           }
         }
       }
@@ -1702,16 +1737,6 @@
         }
       }
     },
-    "Live Photo Default" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "实况照片默认状态"
-          }
-        }
-      }
-    },
     "Live Photo off" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1803,16 +1828,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "手动对焦"
-          }
-        }
-      }
-    },
-    "Manual focus magnifier" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "手动对焦放大镜"
           }
         }
       }
@@ -2165,6 +2180,28 @@
         }
       }
     },
+    "Orange Yellow" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "橙黄"
+          }
+        }
+      }
+    },
+    "Other Settings" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他设置"
+          }
+        }
+      }
+    },
     "Output Format" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2289,16 +2326,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "专业模式需要后置 LiDAR 相机。不支持的设备会在运行时回退到标准模式。"
-          }
-        }
-      }
-    },
-    "Photographer Mode Startup" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "专业模式启动状态"
           }
         }
       }
@@ -2681,13 +2708,35 @@
         }
       }
     },
-    "Remember Last State" : {
-      "extractionState" : "stale",
+    "Remember Flash" : {
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "记住上次状态"
+            "value" : "闪光灯设置记忆"
+          }
+        }
+      }
+    },
+    "Remember Live Photo" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "实况状态记忆"
+          }
+        }
+      }
+    },
+    "Remember Pro Mode" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "专业模式状态记忆"
           }
         }
       }
@@ -2860,12 +2909,13 @@
         }
       }
     },
-    "Return to Camera After Background" : {
+    "Return to Viewfinder on Resume" : {
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "从后台返回后进入相机"
+            "value" : "从后台返回时进入取景窗"
           }
         }
       }
@@ -2932,17 +2982,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "RGB 与 Apple 配对深度"
-          }
-        }
-      }
-    },
-    "Rule of Thirds" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "三分构图线"
           }
         }
       }
@@ -3480,7 +3519,7 @@
       }
     },
     "Shutter Sound" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3491,34 +3530,12 @@
       }
     },
     "Shutter sound cannot be disabled on this device or in this region." : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "此设备或所在地区不允许关闭快门声音。"
-          }
-        }
-      }
-    },
-    "Silent Shutter" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "静音快门"
-          }
-        }
-      }
-    },
-    "Silent shutter is unavailable on this device or in this region." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此设备或所在地区不支持静音快门。"
           }
         }
       }
@@ -3742,6 +3759,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "所选变焦倍率不支持此相机的深度传输。"
+          }
+        }
+      }
+    },
+    "Thirds" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "三分"
           }
         }
       }
@@ -4172,17 +4200,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 App 时允许"
-          }
-        }
-      }
-    },
-    "Yellow" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "橙黄"
           }
         }
       }

@@ -7,49 +7,37 @@ import Foundation
 import SwiftUI
 import UIKit
 
-nonisolated enum CameraGuideOverlayPreference: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum CameraGuideOverlayPreference: String, Sendable {
     case off
     case ruleOfThirds
     case centerCross
 
     static let storageKey = "CameraGuideOverlayPreference"
     static let defaultValue = CameraGuideOverlayPreference.off
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .off:
-            "Off"
-        case .ruleOfThirds:
-            "Rule of Thirds"
-        case .centerCross:
-            "Center Cross"
-        }
-    }
+    static let lastStyleKey = "CameraGuideOverlayLastStyle"
+    static let defaultStyle = CameraGuideOverlayPreference.ruleOfThirds
 
     static func resolved(rawValue: String) -> CameraGuideOverlayPreference {
         CameraGuideOverlayPreference(rawValue: rawValue) ?? defaultValue
     }
+
+    static func restoredStyle(rawValue: String) -> CameraGuideOverlayPreference {
+        let preference = resolved(rawValue: rawValue)
+        return preference == .off ? defaultStyle : preference
+    }
 }
 
-nonisolated enum CameraViewfinderHighlightPreference: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum CameraLevelPreferences {
+    static let enabledKey = "CameraLevelEnabled"
+    static let defaultEnabled = false
+}
+
+nonisolated enum CameraViewfinderHighlightPreference: String, Sendable {
     case yellow
     case titian
 
     static let storageKey = "CameraViewfinderHighlightPreference"
     static let defaultValue = CameraViewfinderHighlightPreference.yellow
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .yellow:
-            "Yellow"
-        case .titian:
-            "Akane"
-        }
-    }
 
     var color: Color {
         switch self {
@@ -128,65 +116,10 @@ nonisolated enum CameraDepthAvailabilityHintPreferences {
     }
 }
 
-nonisolated enum CameraFocusMagnifierPreference: String, CaseIterable, Identifiable, Sendable {
-    case off
-    case brief
-    case standard
-    case extended
-
-    static let storageKey = "CameraFocusMagnifierPreference"
-    static let defaultValue = CameraFocusMagnifierPreference.brief
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .off:
-            "Off"
-        case .brief:
-            "1.5s"
-        case .standard:
-            "3s"
-        case .extended:
-            "5s"
-        }
-    }
-
-    var duration: Duration? {
-        switch self {
-        case .off:
-            nil
-        case .brief:
-            .milliseconds(1_500)
-        case .standard:
-            .seconds(3)
-        case .extended:
-            .seconds(5)
-        }
-    }
-
-    static func resolved(rawValue: String) -> CameraFocusMagnifierPreference {
-        CameraFocusMagnifierPreference(rawValue: rawValue) ?? defaultValue
-    }
-}
-
-nonisolated enum CameraViewfinderControlDefaultPolicy: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum CameraViewfinderControlDefaultPolicy: String, Sendable {
     case defaultOff
     case defaultOn
     case rememberLastState
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .defaultOff:
-            "Default Off"
-        case .defaultOn:
-            "Default On"
-        case .rememberLastState:
-            "Remember Last State"
-        }
-    }
 
     static func resolved(
         rawValue: String,

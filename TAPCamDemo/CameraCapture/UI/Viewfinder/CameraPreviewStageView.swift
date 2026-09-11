@@ -22,12 +22,12 @@ struct CameraPreviewStageState {
     let temporaryFocusEVOffset: Double
     let focusMode: CameraFocusControlMode
     let focusRuntimeEvent: CameraFocusRuntimeEvent?
-    let focusMagnifierPreference: CameraFocusMagnifierPreference
     let focusLoupePulseID: UUID?
     let viewfinderEdgeToastMessage: String?
     let contentRotation: Angle
     let transitionPresentation: CameraViewfinderTransitionPresentation
     let previewReadinessGeneration: Int
+    var isLevelActive: Bool = false
 }
 
 /// Live camera preview, release FOV selector, and Debug-only instrumentation.
@@ -62,9 +62,6 @@ struct CameraPreviewStageView: View {
     @State private var focusExposureScrubStartOffset: Double?
     @State private var focusLoupePoint = CameraPreviewFocusPoint(x: 0.5, y: 0.5)
     @State private var isFocusLoupeVisible = false
-    @State private var focusLoupeVisibilityTask: Task<Void, Never>?
-    @State private var manualFocusTapMarkerPoint: CameraPreviewFocusPoint?
-    @State private var manualFocusTapMarkerTask: Task<Void, Never>?
     @State private var pendingLongPressStartPoint: CameraPreviewFocusPoint?
     @State private var longPressLockTask: Task<Void, Never>?
     @State private var shouldSuppressNextTapFocus = false
@@ -89,21 +86,23 @@ struct CameraPreviewStageView: View {
                 CameraGuideOverlayView(preference: state.guideOverlayPreference)
             }
             .overlay {
+                CameraLevelView(
+                    isActive: state.isLevelActive && !state.transitionPresentation.isPresented,
+                    highlightColor: highlightColor
+                )
+                .position(x: previewSize.width / 2, y: previewSize.height / 2)
+            }
+            .overlay {
                 focusGestureLayer(previewSize: previewSize)
             }
             .overlay {
                 focusTargetOverlayLayer(previewSize: previewSize)
             }
             .overlay {
-                manualFocusTapMarkerLayer(previewSize: previewSize)
-            }
-            .overlay {
                 focusEVControlLayer(previewSize: previewSize)
             }
-            .overlay(alignment: .bottomTrailing) {
+            .overlay {
                 focusLoupe(previewSize: previewSize)
-                    .padding(.trailing, 12)
-                    .padding(.bottom, 12)
             }
             .overlay {
                 CameraViewfinderTransitionOverlayView(
@@ -141,13 +140,14 @@ struct CameraPreviewStageView: View {
             .frame(width: proxy.size.width, height: proxy.size.height, alignment: .center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: state.focusMode) { _, mode in
+        .onChange(of: state.focusMode, initial: true) { _, mode in
             cancelPendingLongPressLock()
             if mode == .manual {
                 hideFocusTargetOverlay()
+                focusLoupePoint = CameraPreviewFocusPoint(x: 0.5, y: 0.5)
+                showFocusLoupe()
             } else {
                 hideFocusLoupe()
-                hideManualFocusTapMarker()
             }
         }
         .onChange(of: state.focusLoupePulseID) { _, pulseID in
@@ -165,13 +165,11 @@ struct CameraPreviewStageView: View {
         .onChange(of: state.previewReadinessGeneration) { _, _ in
             focusLoupePoint = CameraPreviewFocusPoint(x: 0.5, y: 0.5)
             hideFocusLoupe()
-            hideManualFocusTapMarker()
         }
         .onDisappear {
             cancelPendingLongPressLock()
             hideFocusTargetOverlay()
             hideFocusLoupe()
-            hideManualFocusTapMarker()
         }
     }
 
@@ -193,7 +191,6 @@ struct CameraPreviewStageView: View {
                             withAnimation(.easeInOut(duration: 0.14)) {
                                 focusLoupePoint = localPoint
                             }
-                            showManualFocusTapMarker(at: localPoint)
                             showFocusLoupe()
                         }
                         guard let capturePoint = captureFocusPoint(
@@ -241,27 +238,6 @@ struct CameraPreviewStageView: View {
                         y: CGFloat(focusTargetOverlay.point.y) * previewSize.height
                     )
                     .transition(.opacity)
-            }
-        }
-        .allowsHitTesting(false)
-    }
-
-    private func manualFocusTapMarkerLayer(previewSize: CGSize) -> some View {
-        ZStack {
-            if let manualFocusTapMarkerPoint, state.focusMode == .manual {
-                ZStack {
-                    Circle()
-                        .stroke(highlightColor.opacity(0.88), lineWidth: 1.4)
-                        .frame(width: 30, height: 30)
-                    Image(systemName: "plus")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(highlightColor.opacity(0.92))
-                }
-                .position(
-                    x: CGFloat(manualFocusTapMarkerPoint.x) * previewSize.width,
-                    y: CGFloat(manualFocusTapMarkerPoint.y) * previewSize.height
-                )
-                .transition(.opacity.combined(with: .scale(scale: 0.82)))
             }
         }
         .allowsHitTesting(false)
@@ -421,51 +397,15 @@ struct CameraPreviewStageView: View {
     }
 
     private func showFocusLoupe() {
-        guard let duration = state.focusMagnifierPreference.duration,
-              state.focusMode == .manual else {
-            hideFocusLoupe()
-            return
-        }
-
-        focusLoupeVisibilityTask?.cancel()
+        guard state.focusMode == .manual else { return }
         withAnimation(.easeInOut(duration: 0.14)) {
             isFocusLoupeVisible = true
-        }
-        focusLoupeVisibilityTask = Task { @MainActor in
-            try? await Task.sleep(for: duration)
-            guard !Task.isCancelled else {
-                return
-            }
-            hideFocusLoupe()
         }
     }
 
     private func hideFocusLoupe() {
-        focusLoupeVisibilityTask?.cancel()
         withAnimation(.easeInOut(duration: 0.14)) {
             isFocusLoupeVisible = false
-        }
-    }
-
-    private func showManualFocusTapMarker(at point: CameraPreviewFocusPoint) {
-        manualFocusTapMarkerTask?.cancel()
-        withAnimation(.easeOut(duration: 0.12)) {
-            manualFocusTapMarkerPoint = point
-        }
-        manualFocusTapMarkerTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(350))
-            guard !Task.isCancelled else {
-                return
-            }
-            hideManualFocusTapMarker()
-        }
-    }
-
-    private func hideManualFocusTapMarker() {
-        manualFocusTapMarkerTask?.cancel()
-        manualFocusTapMarkerTask = nil
-        withAnimation(.easeInOut(duration: 0.12)) {
-            manualFocusTapMarkerPoint = nil
         }
     }
 
@@ -532,45 +472,60 @@ struct CameraPreviewStageView: View {
     @ViewBuilder
     private func focusLoupe(previewSize: CGSize) -> some View {
         if state.focusMode == .manual, isFocusLoupeVisible {
-            let loupeWidth = max(112, previewSize.width * 0.34)
-            let loupeHeight = loupeWidth * 9.0 / 16.0
             let loupeTransform = CameraManualFocusLoupeTransform(
                 focusPoint: focusLoupePoint,
                 previewSize: previewSize,
                 magnification: 2.4
             )
-            ZStack {
-                CameraManualFocusLoupePreview(source: manualFocusPreviewStream)
-                    .frame(width: previewSize.width, height: previewSize.height)
-                    .scaleEffect(
-                        loupeTransform.magnification,
-                        anchor: UnitPoint(
-                            x: CGFloat(focusLoupePoint.x),
-                            y: CGFloat(focusLoupePoint.y)
-                        )
+            ZStack(alignment: .bottomTrailing) {
+                Rectangle()
+                    .strokeBorder(highlightColor.opacity(0.88), lineWidth: 1.4)
+                    .frame(
+                        width: loupeTransform.sourceRect.width,
+                        height: loupeTransform.sourceRect.height
                     )
-                    .offset(
-                        x: loupeTransform.centeringOffset.width,
-                        y: loupeTransform.centeringOffset.height
+                    .position(
+                        x: loupeTransform.sourceRect.midX,
+                        y: loupeTransform.sourceRect.midY
                     )
-                    .frame(width: loupeWidth, height: loupeHeight)
-                    .clipped()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .accessibilityIdentifier("camera.focusLoupeSourceRegion")
 
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(.white.opacity(0.70), lineWidth: 1.2)
+                Button(action: hideFocusLoupe) {
+                    ZStack {
+                        CameraManualFocusLoupePreview(source: manualFocusPreviewStream)
+                            .allowsHitTesting(false)
+                            .frame(width: previewSize.width, height: previewSize.height)
+                            .scaleEffect(loupeTransform.magnification)
+                            .offset(
+                                x: loupeTransform.centeringOffset.width,
+                                y: loupeTransform.centeringOffset.height
+                            )
+                            .frame(width: loupeTransform.loupeSize.width, height: loupeTransform.loupeSize.height)
+                            .clipped()
 
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.82))
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(.white.opacity(0.70), lineWidth: 1.2)
+
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.82))
+                    }
+                    .frame(width: loupeTransform.loupeSize.width, height: loupeTransform.loupeSize.height)
+                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .shadow(color: .black.opacity(0.42), radius: 8)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 12)
+                .padding(.bottom, 12)
+                .accessibilityLabel("Dismiss focus magnifier")
+                .accessibilityIdentifier("camera.focusLoupe")
             }
-            .frame(width: loupeWidth, height: loupeHeight)
-            .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .shadow(color: .black.opacity(0.42), radius: 8)
-            .allowsHitTesting(false)
+            .frame(width: previewSize.width, height: previewSize.height)
             .transition(.opacity)
-            .accessibilityLabel("Manual focus magnifier")
-            .accessibilityIdentifier("camera.focusLoupe")
         }
     }
 

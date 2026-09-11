@@ -82,47 +82,52 @@ struct TAPCameraManualFocusRuntimeTests {
         #expect(!token.isValid)
     }
 
-    @Test func loupeTransformCentersOffAxisTapInPortraitAndLandscape() {
-        let focusPoints = [
-            CameraPreviewFocusPoint(x: 0.5, y: 0.5),
-            CameraPreviewFocusPoint(x: 0.12, y: 0.84),
-            CameraPreviewFocusPoint(x: 0.86, y: 0.18)
+    @Test func loupeGeometryMatchesSourceRegionAtCenterOffAxisAndEdges() {
+        let examples = [
+            (
+                size: CGSize(width: 300, height: 400),
+                loupeSize: CGSize(width: 112, height: 63),
+                sourceSize: CGSize(width: 46.6666667, height: 26.25),
+                samples: [
+                    (point: CGPoint(x: 0.5, y: 0.5), origin: CGPoint(x: 126.6666667, y: 186.875), offset: CGSize.zero),
+                    (point: CGPoint(x: 0.12, y: 0.84), origin: CGPoint(x: 12.6666667, y: 322.875), offset: CGSize(width: 273.6, height: -326.4)),
+                    (point: CGPoint(x: 0, y: 0), origin: CGPoint(x: 0, y: 0), offset: CGSize(width: 304, height: 448.5)),
+                    (point: CGPoint(x: 1, y: 0), origin: CGPoint(x: 253.3333333, y: 0), offset: CGSize(width: -304, height: 448.5)),
+                    (point: CGPoint(x: 0, y: 1), origin: CGPoint(x: 0, y: 373.75), offset: CGSize(width: 304, height: -448.5)),
+                    (point: CGPoint(x: 1, y: 1), origin: CGPoint(x: 253.3333333, y: 373.75), offset: CGSize(width: -304, height: -448.5))
+                ]
+            ),
+            (
+                size: CGSize(width: 400, height: 300),
+                loupeSize: CGSize(width: 136, height: 76.5),
+                sourceSize: CGSize(width: 56.6666667, height: 31.875),
+                samples: [
+                    (point: CGPoint(x: 0.5, y: 0.5), origin: CGPoint(x: 171.6666667, y: 134.0625), offset: CGSize.zero),
+                    (point: CGPoint(x: 0.12, y: 0.84), origin: CGPoint(x: 19.6666667, y: 236.0625), offset: CGSize(width: 364.8, height: -244.8)),
+                    (point: CGPoint(x: 0, y: 0), origin: CGPoint(x: 0, y: 0), offset: CGSize(width: 412, height: 321.75)),
+                    (point: CGPoint(x: 1, y: 0), origin: CGPoint(x: 343.3333333, y: 0), offset: CGSize(width: -412, height: 321.75)),
+                    (point: CGPoint(x: 0, y: 1), origin: CGPoint(x: 0, y: 268.125), offset: CGSize(width: 412, height: -321.75)),
+                    (point: CGPoint(x: 1, y: 1), origin: CGPoint(x: 343.3333333, y: 268.125), offset: CGSize(width: -412, height: -321.75))
+                ]
+            )
         ]
-        let previewSizes = [
-            CGSize(width: 300, height: 400),
-            CGSize(width: 400, height: 300)
-        ]
-
-        for previewSize in previewSizes {
-            for focusPoint in focusPoints {
+        for example in examples {
+            for sample in example.samples {
                 let transform = CameraManualFocusLoupeTransform(
-                    focusPoint: focusPoint,
-                    previewSize: previewSize,
+                    focusPoint: CameraPreviewFocusPoint(x: sample.point.x, y: sample.point.y),
+                    previewSize: example.size,
                     magnification: 2.4
                 )
-                let displayedFocus = transform.displayedPoint(for: focusPoint)
-
-                #expect(abs(displayedFocus.x - previewSize.width / 2) < 0.0001)
-                #expect(abs(displayedFocus.y - previewSize.height / 2) < 0.0001)
+                #expect(transform.magnification == 2.4)
+                #expect(transform.loupeSize == example.loupeSize)
+                #expect(abs(transform.sourceRect.minX - sample.origin.x) < 0.0001)
+                #expect(abs(transform.sourceRect.minY - sample.origin.y) < 0.0001)
+                #expect(abs(transform.sourceRect.width - example.sourceSize.width) < 0.0001)
+                #expect(abs(transform.sourceRect.height - example.sourceSize.height) < 0.0001)
+                #expect(abs(transform.centeringOffset.width - sample.offset.width) < 0.0001)
+                #expect(abs(transform.centeringOffset.height - sample.offset.height) < 0.0001)
             }
         }
-    }
-
-    @Test func loupeTransformPreservesMagnifiedDistanceAroundTappedCenter() {
-        let previewSize = CGSize(width: 320, height: 480)
-        let focusPoint = CameraPreviewFocusPoint(x: 0.2, y: 0.8)
-        let neighboringPoint = CameraPreviewFocusPoint(x: 0.3, y: 0.7)
-        let transform = CameraManualFocusLoupeTransform(
-            focusPoint: focusPoint,
-            previewSize: previewSize,
-            magnification: 2.4
-        )
-
-        let displayedFocus = transform.displayedPoint(for: focusPoint)
-        let displayedNeighbor = transform.displayedPoint(for: neighboringPoint)
-
-        #expect(abs((displayedNeighbor.x - displayedFocus.x) - 76.8) < 0.0001)
-        #expect(abs((displayedNeighbor.y - displayedFocus.y) + 115.2) < 0.0001)
     }
 
     @Test @MainActor func tapAssistWaitsForAutofocusBeforeLockingCurrent() async throws {

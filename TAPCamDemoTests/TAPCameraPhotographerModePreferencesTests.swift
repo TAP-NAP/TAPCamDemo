@@ -62,6 +62,13 @@ struct TAPCameraPhotographerModePreferencesTests {
             forKey: CameraPhotographerModePreferences.startupPolicyKey
         )
         #expect(!CameraPhotographerModePreferences.resolvedStartupIsEnabled(in: userDefaults))
+        #expect(userDefaults.bool(forKey: CameraPhotographerModePreferences.lastPreferredEnabledKey))
+
+        userDefaults.set(
+            CameraViewfinderControlDefaultPolicy.rememberLastState.rawValue,
+            forKey: CameraPhotographerModePreferences.startupPolicyKey
+        )
+        #expect(CameraPhotographerModePreferences.resolvedStartupIsEnabled(in: userDefaults))
     }
 
 }

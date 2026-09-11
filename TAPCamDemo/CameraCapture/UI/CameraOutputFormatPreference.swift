@@ -10,23 +10,12 @@ import Foundation
 /// Settings stores only this small UI value. Runtime still receives a
 /// `CaptureOutputProfile` selected through `CaptureOutputProfileCatalog`, so
 /// adding a new visible format must also add a reviewed output profile.
-nonisolated enum CameraOutputFormatPreference: String, CaseIterable, Identifiable, Sendable {
+nonisolated enum CameraOutputFormatPreference: String, Sendable {
     case heic
     case jpeg
 
     static let storageKey = "CameraOutputFormatPreference"
     static let defaultValue = CameraOutputFormatPreference.heic
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .heic:
-            "HEIC"
-        case .jpeg:
-            "JPG"
-        }
-    }
 
     var selectionIntent: CaptureOutputProfileSelectionIntent {
         switch self {

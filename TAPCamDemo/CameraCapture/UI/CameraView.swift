@@ -109,8 +109,6 @@ struct CameraView: View {
     private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
     @AppStorage(CameraDepthAvailabilityHintPreferences.showsHintsKey)
     private var showsDepthAvailabilityHints = CameraDepthAvailabilityHintPreferences.defaultShowsHints
-    @AppStorage(CameraFocusMagnifierPreference.storageKey)
-    private var focusMagnifierRawValue = CameraFocusMagnifierPreference.defaultValue.rawValue
     @AppStorage(CameraLivePhotoPreferences.startupPolicyKey)
     private var livePhotoStartupPolicyRawValue = CameraLivePhotoPreferences.defaultStartupPolicy.rawValue
     @AppStorage(CameraLivePhotoPreferences.lastEnabledKey)
@@ -841,12 +839,13 @@ struct CameraView: View {
             temporaryFocusEVOffset: temporaryFocusEVOffset,
             focusMode: focusMode,
             focusRuntimeEvent: viewModel.focusRuntimeEvent,
-            focusMagnifierPreference: CameraFocusMagnifierPreference.resolved(rawValue: focusMagnifierRawValue),
             focusLoupePulseID: previewFocusLoupePulseID,
             viewfinderEdgeToastMessage: viewfinderHint,
             contentRotation: chromeOrientation.angle,
             transitionPresentation: effectiveCameraPathTransitionPresentation,
-            previewReadinessGeneration: previewReadinessGeneration
+            previewReadinessGeneration: previewReadinessGeneration,
+            isLevelActive: scenePhase == .active && !isShowingSettings
+                && !routeStore.isDepthAlbumPresented && isPreviewLayerPreviewing
         )
     }
 
@@ -1171,17 +1170,9 @@ struct CameraView: View {
             rawValue: rawValue,
             fallback: CameraFlashControlMode.defaultStartupPolicy
         )
-        let lastModeRawValue: String
         if policy == .rememberLastState {
-            lastModeRawValue = flashMode.rawValue
-            lastFlashModeRawValue = lastModeRawValue
-        } else {
-            lastModeRawValue = lastFlashModeRawValue
+            lastFlashModeRawValue = flashMode.rawValue
         }
-        flashMode = CameraFlashControlMode.resolvedStartupMode(
-            policyRawValue: rawValue,
-            lastModeRawValue: lastModeRawValue
-        )
     }
 
     private func applyLivePhotoStartupPolicy(_ rawValue: String) {
@@ -1189,20 +1180,18 @@ struct CameraView: View {
             rawValue: rawValue,
             fallback: CameraLivePhotoPreferences.defaultStartupPolicy
         )
-        let lastIsEnabled: Bool
         if policy == .rememberLastState {
-            lastIsEnabled = isLivePhotoEnabled
-            lastLivePhotoEnabled = lastIsEnabled
-        } else {
-            lastIsEnabled = lastLivePhotoEnabled
+            lastLivePhotoEnabled = isLivePhotoEnabled
         }
-        isLivePhotoEnabled = CameraLivePhotoPreferences.resolvedStartupIsEnabled(
-            policyRawValue: rawValue,
-            lastIsEnabled: lastIsEnabled
-        )
     }
 
     private func applyPhotographerModeStartupPolicy(_ rawValue: String) {
+        if CameraViewfinderControlDefaultPolicy.resolved(
+            rawValue: rawValue,
+            fallback: CameraPhotographerModePreferences.defaultStartupPolicy
+        ) == .rememberLastState {
+            lastPhotographerModePreferredEnabled = isPhotographerModePreferredForRearCamera
+        }
         viewModel.requestedPhotographerModeOnStart = CameraPhotographerModePreferences.resolvedStartupIsEnabled(
             policyRawValue: rawValue,
             lastPreferredEnabled: lastPhotographerModePreferredEnabled
