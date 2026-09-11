@@ -55,11 +55,9 @@ struct TAPCaptureManifestEncodingTests {
         )
         let encoded = try TAPDepthManifestEncoder.manifestData(manifest)
 
-        for path in [["payload", "capture", "depthAvailability"], ["payload", "depth", "availability"]] {
-            let missingField = try Self.removing(path: path, from: encoded)
-            #expect(throws: DecodingError.self) {
-                try JSONDecoder().decode(TAPDepthManifest.self, from: missingField)
-            }
+        let missingField = try Self.removing(path: ["payload", "depth", "availability"], from: encoded)
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(TAPDepthManifest.self, from: missingField)
         }
     }
 

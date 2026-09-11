@@ -80,15 +80,6 @@ struct TAPCaptureOutputProfileTests {
         #expect(speedHEIC.maxPhotoQualityPrioritization == .quality)
     }
 
-    @Test func tapDepthManifestUsesPhotoQualityPolicyManifestDescription() throws {
-        let releaseProfile = CaptureOutputProfile.releasePhotoDepthHEIC
-        let samplePayload = TAPCamDemoTestFixtures.samplePayload(location: nil)
-
-        #expect(releaseProfile.photoQualityPolicy.requested.manifestDescription == "quality")
-        #expect(samplePayload.capture.photoQualityPrioritization == "quality")
-        #expect(samplePayload.capture.photoQualityPrioritization == releaseProfile.photoQualityPolicy.requested.manifestDescription)
-    }
-
     @Test func releaseOutputProfileCatalogNamesHEICDefaultAndJPGOption() throws {
         let catalog = CaptureOutputProfileCatalog.release
 

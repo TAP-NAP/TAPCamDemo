@@ -111,19 +111,9 @@ struct TAPSignedExportValidatorTests {
         }
     }
 
-    @Test func signingAndExportPreserveCaptureDeclarationsWithoutRequiringDepth() async throws {
-        let capture = TAPCamDemoTestFixtures.sampleManifestCapture(
-            requestedCodec: AVVideoCodecType.jpeg.rawValue,
-            depthDataDeliveryEnabled: false,
-            embedsDepthDataInPhoto: false,
-            depthDataFiltered: false,
-            depthAvailability: .unavailable,
-            photoQualityPrioritization: "balanced"
-        )
-        // The declaration may disagree with the file and with other metadata.
-        // The signature covers those recorded bytes without certifying depth.
+    @Test func signingAndExportBindDepthDeclarationWithoutDecodingDepth() async throws {
         let manifest = TAPDepthManifest(payload: TAPCamDemoTestFixtures.samplePayload(
-            location: nil, capture: capture, depthAvailability: .available
+            location: nil, depthAvailability: .available
         ))
         let unsignedData = try TAPDepthPhotoFileWriter.injectingManifest(
             manifest, into: TAPCaptureProvenanceTestFixtures.sampleHEICSourceData()
@@ -138,7 +128,6 @@ struct TAPSignedExportValidatorTests {
             .init(data: signedPhoto.data, expectedContainer: .heic),
             expectedCaptureID: "sample-capture"
         )
-        #expect((try TAPDepthPhotoFileReader.decodedManifest(from: validated.data)).payload.capture == capture)
         #expect((try TAPDepthPhotoFileReader.decodedManifest(from: validated.data)).payload.depth.availability == .available)
         #expect(try TAPDepthPhotoFileReader.depthData(from: validated.data) == nil)
         #expect(await signer.lastDigest()?.depthResource.presence == "required")
@@ -147,7 +136,6 @@ struct TAPSignedExportValidatorTests {
     @Test func noDepthPhotoIgnoresOuterProofTimeButRejectsBoundTimeMutation() async throws {
         let payload = TAPCamDemoTestFixtures.samplePayload(
             location: nil,
-            capture: TAPCamDemoTestFixtures.sampleManifestCapture(depthAvailability: .unavailable),
             depthAvailability: .unavailable
         )
         let unsignedData = try TAPDepthPhotoFileWriter.injectingManifest(
@@ -185,7 +173,6 @@ struct TAPSignedExportValidatorTests {
         }
         let digest = try #require(await signer.lastDigest())
 
-        #expect((try TAPDepthPhotoFileReader.decodedManifest(from: validated.data)).payload.capture.depthAvailability == .unavailable)
         #expect((try TAPDepthPhotoFileReader.decodedManifest(from: validated.data)).payload.depth.availability == .unavailable)
         #expect(digest.depthResource.presence == "unavailable")
         #expect(digest.depthResource.binding == "not-present")
@@ -204,7 +191,6 @@ struct TAPSignedExportValidatorTests {
         )
         let payload = TAPCamDemoTestFixtures.samplePayload(
             location: nil,
-            capture: TAPCamDemoTestFixtures.sampleManifestCapture(depthAvailability: .unavailable),
             depthAvailability: .unavailable,
             livePhoto: livePhoto
         )
@@ -251,16 +237,13 @@ struct TAPSignedExportValidatorTests {
         let location = TAPCamDemoTestFixtures.sampleHighPrecisionLocation
         let payload = TAPCamDemoTestFixtures.samplePayload(
             location: location,
-            capture: TAPCamDemoTestFixtures.sampleManifestCapture(
-                requestedCodec: AVVideoCodecType.jpeg.rawValue,
-                depthAvailability: .unavailable
-            ),
             depthAvailability: .unavailable
         )
         let unsignedData = try TAPDepthPhotoFileWriter.injectingManifest(
             TAPDepthManifest(payload: payload),
             into: TAPCamDemoTestFixtures.sampleThumbnailSourceData()
         )
+        let unsignedPayloadData = try TAPDepthPhotoFileReader.decodedManifestDocument(from: unsignedData).rawPayloadData
         let signer = SuccessfulCaptureAssertionSigner()
         let writer = TAPCaptureProvenanceWriter()
 
@@ -275,15 +258,18 @@ struct TAPSignedExportValidatorTests {
             expectedCaptureID: "sample-capture"
         )
         let signedDigest = try #require(await signer.lastDigest())
-        let roundTrippedMetadataHash = try CaptureContentDigest.MetadataHash(
-            payload: (try TAPDepthPhotoFileReader.decodedManifest(from: validated.data)).payload
+        let signedDocument = try TAPDepthPhotoFileReader.decodedManifestDocument(from: validated.data)
+        let expectedMetadataHash = CaptureContentDigest.MetadataHash(
+            payloadData: unsignedPayloadData,
+            mediaType: TAPDepthManifest.payloadMediaType
         )
 
         #expect(signedPhoto.fileContainer == .jpeg)
         #expect(validated.fileContainer == .jpeg)
-        #expect((try TAPDepthPhotoFileReader.decodedManifest(from: validated.data)).payload.location == location)
+        #expect(signedDocument.manifest.payload.location == location)
+        #expect(signedDocument.rawPayloadData == unsignedPayloadData)
         #expect(signedDigest.assetHash.fileContainer == CapturePhotoFileContainer.jpeg.rawValue)
-        #expect(signedDigest.metadataHash == roundTrippedMetadataHash)
+        #expect(signedDigest.metadataHash == expectedMetadataHash)
     }
     private static func rewritingOuterProofTimestamp(_ photoData: Data, value: Any?) throws -> Data {
         let envelope = try TAPProofSlot.proofEnvelopeData(from: photoData, fileContainer: .heic)

@@ -154,15 +154,6 @@ enum TAPCamDemoTestFixtures {
         id: String = "sample-capture",
         capturedAt: String = "2026-04-25T00:00:00.000Z",
         location: TAPDepthManifest.Location?,
-        capture: TAPDepthManifest.Capture = sampleManifestCapture(),
-        rgbSourceDisplayName: String = "Wide",
-        selectedDepthCameraDisplayName: String = "Portrait Depth",
-        requestedFocalLengthLabel: String = "2x",
-        resolvedCaptureDeviceName: String = "Back Triple Camera",
-        resolvedActivePrimaryConstituentDeviceName: String? = "Back Wide Camera",
-        depthSourceCaptureDeviceName: String = "Back Triple Camera",
-        depthSourceSensingMethod: String = "multiCameraStereoOrComputational",
-        depthSourceLidarParticipation: String = "notAsserted",
         depthAvailability: CaptureDepthAvailability = .available,
         livePhoto: TAPDepthManifest.LivePhoto? = nil
     ) -> TAPDepthManifest.Payload {
@@ -171,98 +162,6 @@ enum TAPCamDemoTestFixtures {
         return TAPDepthManifest.Payload(
             id: id,
             capturedAt: capturedAt,
-            sessionMode: "singleCam",
-            pairingMode: "rgbWithApplePairedDepth",
-            alignmentStatus: "sameCapturePipeline",
-            sourceAPIs: .avFoundationPhotoDepth,
-            capture: capture,
-            rgbSource: TAPDepthManifest.RGBSource(
-                id: "com.apple.test-wide",
-                displayName: rgbSourceDisplayName,
-                deviceType: "AVCaptureDeviceTypeBuiltInWideAngleCamera",
-                deviceName: "Back Wide Camera",
-                position: "back",
-                sourceKind: "physical",
-                requestedReferenceZoomFactor: 1.0
-            ),
-            depthSource: TAPDepthManifest.DepthSourceSelection(
-                selectionMode: "auto",
-                requestedDepthSourceID: "portraitSemanticDepth",
-                requestedDepthSourceDisplayName: "Portrait Depth",
-                requestedDepthSourceKind: "portraitSemanticDepth",
-                compatibilityStatus: "compatible",
-                compatibilityReason: nil,
-                resolvedDeviceID: "com.apple.test-camera",
-                resolvedDeviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
-                resolvedDeviceName: "Back Triple Camera"
-            ),
-            pairing: TAPDepthManifest.Pairing(
-                mode: "rgbWithApplePairedDepth",
-                status: "compatible",
-                requiresMultiCam: false,
-                releaseAllowed: true,
-                alignmentStatus: "sameCapturePipeline"
-            ),
-            zoom: TAPDepthManifest.Zoom(
-                requestedZoomID: "zoom-2x",
-                requestedZoomFactor: 2.0,
-                actualVideoZoomFactor: 2.0,
-                depthSafeRanges: [
-                    TAPDepthManifest.ZoomRange(lowerBound: 1.0, upperBound: 3.0)
-                ],
-                isContinuous: true,
-                isDiscrete: false
-            ),
-            crop: TAPDepthManifest.Crop(
-                mode: "previewOnly",
-                cropRectNormalized: CropRectNormalized(x: 0, y: 0.125, width: 1, height: 0.75),
-                destructiveFinalCropApplied: false,
-                sourceAPI: "AVCaptureVideoPreviewLayer.metadataOutputRectConverted(fromLayerRect:)"
-            ),
-            resolvedSession: TAPDepthManifest.ResolvedSession(
-                mode: "singleCam",
-                resolvedCaptureDeviceID: "com.apple.test-camera",
-                resolvedCaptureDeviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
-                resolvedCaptureDeviceName: "Back Triple Camera",
-                activePrimaryConstituentDeviceType: "AVCaptureDeviceTypeBuiltInWideAngleCamera",
-                activePrimaryConstituentDeviceName: "Back Wide Camera"
-            ),
-            selectedDepthCamera: TAPDepthManifest.SelectedDepthCamera(
-                id: "portraitSemanticDepth",
-                displayName: selectedDepthCameraDisplayName,
-                deviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
-                deviceName: "Back Triple Camera",
-                position: "back"
-            ),
-            selectedZoom: TAPDepthManifest.SelectedZoom(
-                id: "zoom-2x",
-                displayName: "2x",
-                zoomFactor: 2.0
-            ),
-            photoLens: TAPDepthManifest.PhotoLens(
-                requestedLensID: "com.apple.test-wide",
-                requestedDisplayName: "Wide",
-                requestedFocalLengthLabel: requestedFocalLengthLabel,
-                labelSource: "rgbSourceAndDepthSafeZoom",
-                requestedZoomFactor: 2.0,
-                requestedReferenceZoomFactor: 2.0,
-                requestedEquivalentFocalLength35mmMillimeters: nil,
-                position: "back",
-                resolvedCaptureDeviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
-                resolvedCaptureDeviceName: resolvedCaptureDeviceName,
-                resolvedActivePrimaryConstituentDeviceType: "AVCaptureDeviceTypeBuiltInWideAngleCamera",
-                resolvedActivePrimaryConstituentDeviceName: resolvedActivePrimaryConstituentDeviceName
-            ),
-            depthBackend: TAPDepthManifest.DepthBackendSelection(
-                selectionMode: "auto",
-                requestedBackendID: "portraitSemanticDepth",
-                requestedBackendDisplayName: "Portrait Depth",
-                resolvedBackendID: "portraitSemanticDepth",
-                resolvedBackendDisplayName: "Portrait Depth",
-                resolvedCaptureDeviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
-                resolvedCaptureDeviceName: "Back Triple Camera",
-                actualVideoZoomFactor: 2.0
-            ),
             camera: TAPDepthManifest.Camera(
                 localizedName: "Back Triple Camera",
                 uniqueID: "com.apple.test-camera",
@@ -308,14 +207,11 @@ enum TAPCamDemoTestFixtures {
                 isFiltered: hasDepth,
                 source: TAPDepthManifest.DepthSource(
                     captureDeviceType: "AVCaptureDeviceTypeBuiltInTripleCamera",
-                    captureDeviceName: depthSourceCaptureDeviceName,
-                    sensingMethod: depthSourceSensingMethod,
-                    lidarParticipation: depthSourceLidarParticipation
+                    captureDeviceName: "Back Triple Camera",
+                    sensingMethod: "multiCameraStereoOrComputational",
+                    lidarParticipation: "notAsserted"
                 ),
                 cameraCalibration: nil
-            ),
-            alignment: TAPDepthManifest.Alignment(
-                depthToImage: hasDepth ? "appleAuxiliaryDepthNative" : "unavailable"
             ),
             location: location,
             software: TAPDepthManifest.Software(
@@ -325,25 +221,6 @@ enum TAPCamDemoTestFixtures {
                 build: "1"
             ),
             livePhoto: livePhoto
-        )
-    }
-
-    static func sampleManifestCapture(
-        requestedCodec: String = AVVideoCodecType.hevc.rawValue,
-        depthDataDeliveryEnabled: Bool = true,
-        embedsDepthDataInPhoto: Bool = true,
-        depthDataFiltered: Bool = true,
-        depthAvailability: CaptureDepthAvailability = .available,
-        photoQualityPrioritization: String = "quality"
-    ) -> TAPDepthManifest.Capture {
-        TAPDepthManifest.Capture(
-            resolvedSettingsUniqueID: 42,
-            requestedCodec: requestedCodec,
-            depthDataDeliveryEnabled: depthDataDeliveryEnabled,
-            embedsDepthDataInPhoto: embedsDepthDataInPhoto,
-            depthDataFiltered: depthDataFiltered,
-            depthAvailability: depthAvailability,
-            photoQualityPrioritization: photoQualityPrioritization
         )
     }
 
@@ -519,10 +396,7 @@ enum TAPCamDemoTestFixtures {
             manifest: TAPDepthManifest(payload: samplePayload(
                 id: captureID,
                 capturedAt: TAPDateFormatting.iso8601.string(from: capturedAt),
-                location: sampleLocation,
-                capture: sampleManifestCapture(
-                    photoQualityPrioritization: photoQualityLevel.manifestDescription
-                )
+                location: sampleLocation
             )),
             livePhotoMovie: livePhotoMovie,
             signatureStatus: .unsigned(reason: "test"),

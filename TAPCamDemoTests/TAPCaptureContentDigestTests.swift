@@ -24,16 +24,6 @@ struct TAPCaptureContentDigestTests {
         #expect(json.contains("\"depthResource\""))
     }
 
-    @Test func captureContentBindingDoesNotUsePlatformDecodedPixelsOrConvertedDepth() throws {
-        let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/CameraCapture/Output/CaptureContentDigest.swift"
-        )
-
-        #expect(!source.contains("CGImageSourceCreateImageAtIndex"))
-        #expect(!source.contains("CGContext("))
-        #expect(!source.contains("converting(toDepthDataType:"))
-    }
-
     @Test func livePhotoContentBindingAddsSignedResources() throws {
         let movieURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
             .appendingPathComponent("paired-video.mov")
@@ -46,7 +36,6 @@ struct TAPCaptureContentDigestTests {
         let manifest = TAPDepthManifest(
             payload: TAPCamDemoTestFixtures.samplePayload(
                 location: nil,
-                capture: TAPCamDemoTestFixtures.sampleManifestCapture(depthAvailability: .unavailable),
                 depthAvailability: .unavailable,
                 livePhoto: TAPDepthManifest.LivePhoto(
                     presence: "paired-video",

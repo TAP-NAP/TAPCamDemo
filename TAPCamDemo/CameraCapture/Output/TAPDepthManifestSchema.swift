@@ -5,12 +5,7 @@
 //  Created by Codex on 2026/4/25.
 //
 
-@preconcurrency import AVFoundation
-import CoreLocation
-import CoreVideo
 import Foundation
-import ImageIO
-import simd
 
 nonisolated enum CaptureDepthAvailability: String, Codable, Equatable, Sendable {
     case available
@@ -26,17 +21,8 @@ nonisolated enum CaptureDepthAvailability: String, Codable, Equatable, Sendable 
     }
 }
 
-/// Versioned metadata contract embedded into every TAP depth HEIC/JPG photo.
-///
-/// The photo file itself remains standards-friendly:
-/// - the visible image stays in the selected HEIC/JPG container,
-/// - Apple depth/disparity data stays in its auxiliary data attachment,
-/// - normal EXIF/GPS/TIFF fields mirror common metadata for generic tools,
-/// - XMP `tapdepth:Manifest` is the authoritative TAP-specific location.
-///
-/// V1 always writes `proofs: []`; proof data lives only in the fixed proof slot.
-/// The business payload stays under `payload` so verification can hash its exact
-/// embedded bytes without chasing duplicate metadata in EXIF, GPS, or Photos.
+/// Photo metadata embedded at XMP `tapdepth:Manifest`.
+/// The producer writes `proofs: []`; proof data lives in the fixed proof slot.
 nonisolated struct TAPDepthManifest: Codable, Equatable {
     static let schemaIdentifier = "urn:tapnap:tapcam:still-photo-manifest:v1"
     static let mediaType = "application/vnd.tapnap.still-photo-manifest+json;version=1"
@@ -96,138 +82,32 @@ extension TAPDepthManifest {
     nonisolated struct Payload: Codable, Equatable {
         let id: String
         let capturedAt: String
-        let sessionMode: String
-        let pairingMode: String
-        let alignmentStatus: String
-        let sourceAPIs: SourceAPIs
-        let capture: Capture
-        let rgbSource: RGBSource
-        let depthSource: DepthSourceSelection
-        let pairing: Pairing
-        let zoom: Zoom
-        let crop: Crop
-        let resolvedSession: ResolvedSession
-        let selectedDepthCamera: SelectedDepthCamera
-        let selectedZoom: SelectedZoom
-        let photoLens: PhotoLens
-        let depthBackend: DepthBackendSelection
         let camera: Camera
         let photo: Photo
         let depth: Depth
-        let alignment: Alignment
         let location: Location?
         let software: Software
         let livePhoto: LivePhoto?
 
-        nonisolated init(
-            id: String,
-            capturedAt: String,
-            sessionMode: String,
-            pairingMode: String,
-            alignmentStatus: String,
-            sourceAPIs: SourceAPIs,
-            capture: Capture,
-            rgbSource: RGBSource,
-            depthSource: DepthSourceSelection,
-            pairing: Pairing,
-            zoom: Zoom,
-            crop: Crop,
-            resolvedSession: ResolvedSession,
-            selectedDepthCamera: SelectedDepthCamera,
-            selectedZoom: SelectedZoom,
-            photoLens: PhotoLens,
-            depthBackend: DepthBackendSelection,
-            camera: Camera,
-            photo: Photo,
-            depth: Depth,
-            alignment: Alignment,
-            location: Location?,
-            software: Software,
-            livePhoto: LivePhoto? = nil
-        ) {
-            self.id = id
-            self.capturedAt = capturedAt
-            self.sessionMode = sessionMode
-            self.pairingMode = pairingMode
-            self.alignmentStatus = alignmentStatus
-            self.sourceAPIs = sourceAPIs
-            self.capture = capture
-            self.rgbSource = rgbSource
-            self.depthSource = depthSource
-            self.pairing = pairing
-            self.zoom = zoom
-            self.crop = crop
-            self.resolvedSession = resolvedSession
-            self.selectedDepthCamera = selectedDepthCamera
-            self.selectedZoom = selectedZoom
-            self.photoLens = photoLens
-            self.depthBackend = depthBackend
-            self.camera = camera
-            self.photo = photo
-            self.depth = depth
-            self.alignment = alignment
-            self.location = location
-            self.software = software
-            self.livePhoto = livePhoto
-        }
-
         enum CodingKeys: String, CodingKey {
             case id
             case capturedAt
-            case sessionMode
-            case pairingMode
-            case alignmentStatus
-            case sourceAPIs
-            case capture
-            case rgbSource
-            case depthSource
-            case pairing
-            case zoom
-            case crop
-            case resolvedSession
-            case selectedDepthCamera
-            case selectedZoom
-            case photoLens
-            case depthBackend
             case camera
             case photo
             case depth
-            case alignment
             case location
             case software
             case livePhoto
         }
 
-        /// Encodes the payload with an explicit `location: null` when no
-        /// location is available.
-        ///
-        /// Synthesized `Codable` uses `encodeIfPresent` for optionals and would
-        /// omit the field. The manifest is an interchange contract rather than
-        /// an app-private cache, so keeping the key present makes parsers and
-        /// canonicalization rules easier to implement.
+        /// Preserve the producer convention of an explicit `location: null`.
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             try container.encode(id, forKey: .id)
             try container.encode(capturedAt, forKey: .capturedAt)
-            try container.encode(sessionMode, forKey: .sessionMode)
-            try container.encode(pairingMode, forKey: .pairingMode)
-            try container.encode(alignmentStatus, forKey: .alignmentStatus)
-            try container.encode(sourceAPIs, forKey: .sourceAPIs)
-            try container.encode(capture, forKey: .capture)
-            try container.encode(rgbSource, forKey: .rgbSource)
-            try container.encode(depthSource, forKey: .depthSource)
-            try container.encode(pairing, forKey: .pairing)
-            try container.encode(zoom, forKey: .zoom)
-            try container.encode(crop, forKey: .crop)
-            try container.encode(resolvedSession, forKey: .resolvedSession)
-            try container.encode(selectedDepthCamera, forKey: .selectedDepthCamera)
-            try container.encode(selectedZoom, forKey: .selectedZoom)
-            try container.encode(photoLens, forKey: .photoLens)
-            try container.encode(depthBackend, forKey: .depthBackend)
             try container.encode(camera, forKey: .camera)
             try container.encode(photo, forKey: .photo)
             try container.encode(depth, forKey: .depth)
-            try container.encode(alignment, forKey: .alignment)
             try container.encode(location, forKey: .location)
             try container.encode(software, forKey: .software)
             try container.encodeIfPresent(livePhoto, forKey: .livePhoto)
@@ -245,148 +125,6 @@ extension TAPDepthManifest {
         let audio: String
     }
 
-    nonisolated struct SourceAPIs: Codable, Equatable {
-        let photo: String
-        let depth: String
-        let camera: String
-        let location: String
-
-        nonisolated static let avFoundationPhotoDepth = SourceAPIs(
-            photo: "AVCapturePhotoOutput / AVCapturePhoto",
-            depth: "AVCapturePhoto.depthData / AVDepthData",
-            camera: "AVCaptureDevice / AVCaptureDevice.Format",
-            location: "CLLocationManager.requestLocation / CLLocation"
-        )
-    }
-
-    nonisolated struct Capture: Codable, Equatable {
-        let resolvedSettingsUniqueID: Int64
-        let requestedCodec: String
-        let depthDataDeliveryEnabled: Bool
-        let embedsDepthDataInPhoto: Bool
-        let depthDataFiltered: Bool
-        let depthAvailability: CaptureDepthAvailability
-        let photoQualityPrioritization: String
-
-        nonisolated init(
-            resolvedSettingsUniqueID: Int64,
-            requestedCodec: String,
-            depthDataDeliveryEnabled: Bool,
-            embedsDepthDataInPhoto: Bool,
-            depthDataFiltered: Bool,
-            depthAvailability: CaptureDepthAvailability = .available,
-            photoQualityPrioritization: String
-        ) {
-            self.resolvedSettingsUniqueID = resolvedSettingsUniqueID
-            self.requestedCodec = requestedCodec
-            self.depthDataDeliveryEnabled = depthDataDeliveryEnabled
-            self.embedsDepthDataInPhoto = embedsDepthDataInPhoto
-            self.depthDataFiltered = depthDataFiltered
-            self.depthAvailability = depthAvailability
-            self.photoQualityPrioritization = photoQualityPrioritization
-        }
-
-        private enum CodingKeys: String, CodingKey {
-            case resolvedSettingsUniqueID
-            case requestedCodec
-            case depthDataDeliveryEnabled
-            case embedsDepthDataInPhoto
-            case depthDataFiltered
-            case depthAvailability
-            case photoQualityPrioritization
-        }
-
-        nonisolated init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            self.init(
-                resolvedSettingsUniqueID: try container.decode(Int64.self, forKey: .resolvedSettingsUniqueID),
-                requestedCodec: try container.decode(String.self, forKey: .requestedCodec),
-                depthDataDeliveryEnabled: try container.decode(Bool.self, forKey: .depthDataDeliveryEnabled),
-                embedsDepthDataInPhoto: try container.decode(Bool.self, forKey: .embedsDepthDataInPhoto),
-                depthDataFiltered: try container.decode(Bool.self, forKey: .depthDataFiltered),
-                depthAvailability: try container.decode(
-                    CaptureDepthAvailability.self,
-                    forKey: .depthAvailability
-                ),
-                photoQualityPrioritization: try container.decode(String.self, forKey: .photoQualityPrioritization)
-            )
-        }
-    }
-
-    nonisolated struct SelectedDepthCamera: Codable, Equatable {
-        let id: String
-        let displayName: String
-        let deviceType: String
-        let deviceName: String
-        let position: String
-    }
-
-    nonisolated struct SelectedZoom: Codable, Equatable {
-        let id: String
-        let displayName: String
-        let zoomFactor: Double
-    }
-
-    nonisolated struct RGBSource: Codable, Equatable {
-        let id: String
-        let displayName: String
-        let deviceType: String
-        let deviceName: String
-        let position: String
-        let sourceKind: String
-        let requestedReferenceZoomFactor: Double
-    }
-
-    nonisolated struct DepthSourceSelection: Codable, Equatable {
-        let selectionMode: String
-        let requestedDepthSourceID: String?
-        let requestedDepthSourceDisplayName: String?
-        let requestedDepthSourceKind: String?
-        let compatibilityStatus: String
-        let compatibilityReason: String?
-        let resolvedDeviceID: String?
-        let resolvedDeviceType: String?
-        let resolvedDeviceName: String?
-    }
-
-    nonisolated struct Pairing: Codable, Equatable {
-        let mode: String
-        let status: String
-        let requiresMultiCam: Bool
-        let releaseAllowed: Bool
-        let alignmentStatus: String
-    }
-
-    nonisolated struct Zoom: Codable, Equatable {
-        let requestedZoomID: String?
-        let requestedZoomFactor: Double?
-        let actualVideoZoomFactor: Double?
-        let depthSafeRanges: [ZoomRange]
-        let isContinuous: Bool
-        let isDiscrete: Bool
-    }
-
-    nonisolated struct ZoomRange: Codable, Equatable {
-        let lowerBound: Double
-        let upperBound: Double
-    }
-
-    nonisolated struct Crop: Codable, Equatable {
-        let mode: String
-        let cropRectNormalized: CropRectNormalized
-        let destructiveFinalCropApplied: Bool
-        let sourceAPI: String
-    }
-
-    nonisolated struct ResolvedSession: Codable, Equatable {
-        let mode: String
-        let resolvedCaptureDeviceID: String
-        let resolvedCaptureDeviceType: String
-        let resolvedCaptureDeviceName: String
-        let activePrimaryConstituentDeviceType: String?
-        let activePrimaryConstituentDeviceName: String?
-    }
-
     nonisolated struct Camera: Codable, Equatable {
         let localizedName: String
         let uniqueID: String
@@ -400,32 +138,6 @@ extension TAPDepthManifest {
         let lensPosition: Float?
         let minimumFocusDistanceMillimeters: Int?
         let nominalFocalLengthIn35mmFilmMillimeters: Float?
-    }
-
-    nonisolated struct PhotoLens: Codable, Equatable {
-        let requestedLensID: String
-        let requestedDisplayName: String
-        let requestedFocalLengthLabel: String
-        let labelSource: String
-        let requestedZoomFactor: Double
-        let requestedReferenceZoomFactor: Double
-        let requestedEquivalentFocalLength35mmMillimeters: Double?
-        let position: String
-        let resolvedCaptureDeviceType: String
-        let resolvedCaptureDeviceName: String
-        let resolvedActivePrimaryConstituentDeviceType: String?
-        let resolvedActivePrimaryConstituentDeviceName: String?
-    }
-
-    nonisolated struct DepthBackendSelection: Codable, Equatable {
-        let selectionMode: String
-        let requestedBackendID: String?
-        let requestedBackendDisplayName: String?
-        let resolvedBackendID: String
-        let resolvedBackendDisplayName: String
-        let resolvedCaptureDeviceType: String
-        let resolvedCaptureDeviceName: String
-        let actualVideoZoomFactor: Double
     }
 
     nonisolated struct CameraFormat: Codable, Equatable {
@@ -529,10 +241,6 @@ extension TAPDepthManifest {
                 cameraCalibration: try container.decodeIfPresent(CameraCalibration.self, forKey: .cameraCalibration)
             )
         }
-    }
-
-    nonisolated struct Alignment: Codable, Equatable {
-        let depthToImage: String
     }
 
     nonisolated struct DepthSource: Codable, Equatable {
