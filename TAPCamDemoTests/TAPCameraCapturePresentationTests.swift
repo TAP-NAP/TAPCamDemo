@@ -358,7 +358,7 @@ struct TAPCameraCapturePresentationTests {
 
         let rotations: [(UIDeviceOrientation, Double)] = [
             (.landscapeRight, -90),
-            (.portraitUpsideDown, 180),
+            (.portraitUpsideDown, -180),
             (.portrait, 0),
             (.landscapeLeft, 90)
         ]
@@ -366,13 +366,41 @@ struct TAPCameraCapturePresentationTests {
             try await fixture.postOrientation(orientation)
             #expect(controller.angle == .degrees(degrees))
         }
-        #expect(publishedDegrees == [0, 90, -90, 180, 0, 90])
+        #expect(publishedDegrees == [0, 90, -90, -180, 0, 90])
 
         for orientation in [UIDeviceOrientation.unknown, .faceUp, .faceDown, .landscapeLeft] {
             try await fixture.postOrientation(orientation)
             #expect(controller.angle == .degrees(90))
         }
-        #expect(publishedDegrees == [0, 90, -90, 180, 0, 90])
+        #expect(publishedDegrees == [0, 90, -90, -180, 0, 90])
+    }
+
+    @Test(arguments: [false, true]) @MainActor
+    func cameraChromeRotationTakesQuarterTurnsAcrossAngleBoundary(clockwise: Bool) async throws {
+        let fixture = CameraChromeOrientationTestFixture()
+        let controller = fixture.makeController()
+        var publishedDegrees: [Double] = []
+        let subscription = controller.$angle.sink { publishedDegrees.append($0.degrees) }
+        defer { subscription.cancel(); controller.stop() }
+        controller.start()
+
+        let orientations: [UIDeviceOrientation] = clockwise
+            ? [.landscapeLeft, .portraitUpsideDown, .landscapeRight, .portrait]
+            : [.landscapeRight, .portraitUpsideDown, .landscapeLeft, .portrait]
+        let step = clockwise ? 90.0 : -90.0
+        for _ in 0..<2 {
+            for orientation in orientations {
+                let previousDegrees = controller.angle.degrees
+                try await fixture.postOrientation(orientation)
+                #expect(abs(controller.angle.degrees - previousDegrees - step) < 0.0001,
+                        "Adjacent orientations must move 90 degrees without unwinding")
+            }
+        }
+        #expect(abs(controller.angle.degrees - step * 8) < 0.0001)
+        for orientation in [UIDeviceOrientation.portrait, .unknown, .faceUp, .faceDown] {
+            try await fixture.postOrientation(orientation)
+        }
+        #expect(publishedDegrees.count == 9, "Equivalent or unstable orientations must not restart animation")
     }
 
     @Test @MainActor func cameraChromeOrientationBalancesRepeatedStartAndStop() async throws {
@@ -404,7 +432,7 @@ struct TAPCameraCapturePresentationTests {
 
         controller.start()
         #expect(fixture.orientationReadCount == 3)
-        #expect(controller.angle == .degrees(180))
+        #expect(controller.angle == .degrees(-180))
         controller.stop()
         #expect(fixture.events == [
             "startChromeOrientation", "stopChromeOrientation",

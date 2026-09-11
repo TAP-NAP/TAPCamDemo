@@ -66,10 +66,12 @@ final class CameraChromeOrientationController: ObservableObject {
     }
 
     private func update(from orientation: UIDeviceOrientation) {
-        guard let newAngle = orientation.cameraChromeAngle,
-              newAngle != angle else { return }
+        guard let newAngle = orientation.cameraChromeAngle else { return }
 
-        angle = newAngle
+        // Keep the nearest equivalent angle so crossing 180° never unwinds 270°.
+        let delta = (newAngle.degrees - angle.degrees).remainder(dividingBy: 360)
+        guard delta != 0 else { return }
+        angle += .degrees(delta)
     }
 }
 
