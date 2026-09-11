@@ -85,7 +85,7 @@ struct TAPDepthAnalysisPresentationTests {
     }
 
     @Test @MainActor func mixedViewerKeepsModeAcrossSettledResourceTypes() {
-        let a = TAPLibraryViewerPagingEntry(id: "a", destination: .analysis(DepthAlbumAnalysisRoute(itemID: "a", source: .photosAsset("a"))))
+        let a = TAPLibraryViewerPagingEntry(id: "a", destination: .analysis(LibraryPhotoRoute(itemID: "a", source: .photosAsset("a"))))
         let b = TAPLibraryViewerPagingEntry(id: "b", destination: .video(TAPVideoPlaybackRoute(itemID: "b", source: .photosAsset("b"))))
         let c = TAPLibraryViewerPagingEntry(id: "c", destination: .video(TAPVideoPlaybackRoute(itemID: "c", source: .photosAsset("c"))))
         let store = TAPLibraryViewerStore(entries: [a, b, c], currentItemID: a.id, loader: .noop)
@@ -358,7 +358,7 @@ struct TAPDepthAnalysisPresentationTests {
     @Test @MainActor func retainedOriginalTracksContentRevisionAndMemoryEviction() async throws {
         func entry(_ id: String, content: String = "1", poster: String = "1") -> TAPLibraryViewerPagingEntry {
             TAPLibraryViewerPagingEntry(id: id,
-                destination: .analysis(DepthAlbumAnalysisRoute(itemID: id, source: .photosAsset(id))),
+                destination: .analysis(LibraryPhotoRoute(itemID: id, source: .photosAsset(id))),
                 mediaVersion: LibraryMediaVersion(contentRevision: content, posterRevision: poster))
         }
         let a = entry("a"), b = entry("b"), c = entry("c"), d = entry("d")
@@ -979,7 +979,7 @@ private actor OriginalRGBTestGate {
 
 private func viewerPagingEntry(_ entry: DepthAnalysisAlbumContext.Entry) -> TAPLibraryViewerPagingEntry {
     TAPLibraryViewerPagingEntry(id: entry.id,
-        destination: .analysis(DepthAlbumAnalysisRoute(itemID: entry.id, source: entry.source)),
+        destination: .analysis(LibraryPhotoRoute(itemID: entry.id, source: entry.source)),
         expectsPairedVideo: entry.expectsPairedVideo, mediaVersion: entry.mediaVersion,
         mediaID: entry.mediaID, routeAnchor: entry.routeAnchor)
 }

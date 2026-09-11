@@ -108,7 +108,7 @@ struct StartupGateView: View {
                 for: UIApplication.didReceiveMemoryWarningNotification
             )
         ) { _ in
-            DepthAlbumThumbnailMemoryCache.shared.removeAll()
+            LibraryThumbnailMemoryCache.shared.removeAll()
         }
     }
 

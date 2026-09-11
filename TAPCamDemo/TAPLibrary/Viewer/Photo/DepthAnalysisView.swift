@@ -17,7 +17,7 @@ import UIKit
 /// One detail visit owns one pager, toolbar and user-selected presentation.
 /// The photo slot and video session only own the selected resource's work.
 struct TAPLibraryViewer: View {
-    let destination: DepthAlbumRouteAdapter.Destination
+    let destination: TAPLibraryRouteAdapter.Destination
     let entries: [TAPLibraryViewerPagingEntry]
     let mediaFetcher: any LibraryMediaFetching
     let onCurrentEntryChanged: (TAPLibraryViewerPagingEntry) -> Void
@@ -34,7 +34,7 @@ struct TAPLibraryViewer: View {
     private var viewfinderHighlightRawValue = CameraViewfinderHighlightPreference.defaultValue.rawValue
 
     init(
-        destination: DepthAlbumRouteAdapter.Destination,
+        destination: TAPLibraryRouteAdapter.Destination,
         entries: [TAPLibraryViewerPagingEntry]? = nil,
         mediaFetcher: any LibraryMediaFetching = PhotoKitLibraryMediaFetcher(),
         photoLoader: DepthAnalysisProgressivePhotoLoader? = nil,

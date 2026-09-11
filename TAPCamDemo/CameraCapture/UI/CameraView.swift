@@ -187,8 +187,8 @@ struct CameraView: View {
                 .navigationTitle("Camera")
                 .environment(\.locale, AppLanguage.english.locale)
                 .toolbar(.hidden, for: .navigationBar)
-                .navigationDestination(isPresented: depthAlbumPresentedBinding) {
-                    DepthAlbumPickerView(
+                .navigationDestination(isPresented: libraryPresentedBinding) {
+                    TAPLibraryView(
                         routeStore: routeStore,
                         libraryStore: libraryStore,
                         mediaFetcher: viewModel.libraryMediaFetcher
@@ -298,7 +298,7 @@ struct CameraView: View {
         .onChange(of: usesMicrophoneData) { _, _ in
             captureSessionPreferenceDidChange()
         }
-        .onChange(of: routeStore.isDepthAlbumPresented) { _, isPresented in
+        .onChange(of: routeStore.isLibraryPresented) { _, isPresented in
             if isPresented {
                 persistRememberedViewfinderControlStateIfNeeded()
             }
@@ -727,10 +727,10 @@ struct CameraView: View {
         )
     }
 
-    private var depthAlbumPresentedBinding: Binding<Bool> {
+    private var libraryPresentedBinding: Binding<Bool> {
         Binding(
-            get: { routeStore.isDepthAlbumPresented },
-            set: { routeStore.setDepthAlbumPresented($0) }
+            get: { routeStore.isLibraryPresented },
+            set: { routeStore.setLibraryPresented($0) }
         )
     }
 
@@ -847,7 +847,7 @@ struct CameraView: View {
             transitionPresentation: effectiveCameraPathTransitionPresentation,
             previewReadinessGeneration: previewReadinessGeneration,
             isLevelActive: scenePhase == .active && !isShowingSettings
-                && !routeStore.isDepthAlbumPresented && isPreviewLayerPreviewing
+                && !routeStore.isLibraryPresented && isPreviewLayerPreviewing
         )
     }
 
@@ -2035,7 +2035,7 @@ struct CameraView: View {
     }
 
     private func presentTAPLibrary() {
-        guard !routeStore.isDepthAlbumPresented else {
+        guard !routeStore.isLibraryPresented else {
             return
         }
 
@@ -2050,7 +2050,7 @@ struct CameraView: View {
         lifecycleCoordinator.cancelCaptureModeChange()
         beginCameraPathTransition(.resumingPreview)
         viewModel.pauseForAnalysis()
-        routeStore.presentDepthAlbum()
+        routeStore.presentLibrary()
     }
 
     private func handleLibraryReturnCompleted(

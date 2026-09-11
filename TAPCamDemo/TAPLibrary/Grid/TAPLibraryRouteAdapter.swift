@@ -1,12 +1,12 @@
 //
-//  DepthAlbumRouteAdapter.swift
+//  TAPLibraryRouteAdapter.swift
 //  TAPCamDemo
 //
 
 /// Converts Library identities into the route payload required by each viewer.
-nonisolated enum DepthAlbumRouteAdapter {
+nonisolated enum TAPLibraryRouteAdapter {
     enum Destination: Hashable {
-        case analysis(DepthAlbumAnalysisRoute)
+        case analysis(LibraryPhotoRoute)
         case video(TAPVideoPlaybackRoute)
 
         var itemID: String {
@@ -24,7 +24,7 @@ nonisolated enum DepthAlbumRouteAdapter {
            let videoRoute = TAPVideoPlaybackRoute(item: item) {
             return .video(videoRoute)
         }
-        return .analysis(DepthAlbumAnalysisRoute(item: item))
+        return .analysis(LibraryPhotoRoute(item: item))
     }
 }
 
@@ -33,10 +33,10 @@ nonisolated enum DepthAlbumRouteAdapter {
 /// This context is the canonical cursor for the shared visual pager and
 /// deletion advancement, so neither renderer can skip an item of another
 /// media type.
-nonisolated struct DepthAlbumDeletionContext: Equatable {
+nonisolated struct LibraryDeletionContext: Equatable {
     nonisolated struct Entry: Identifiable, Equatable {
         let id: String
-        let destination: DepthAlbumRouteAdapter.Destination
+        let destination: TAPLibraryRouteAdapter.Destination
         let routeAnchor: CameraRouteAlbumAnchor
         let expectsPairedVideo: Bool
         let mediaVersion: LibraryMediaVersion
@@ -44,7 +44,7 @@ nonisolated struct DepthAlbumDeletionContext: Equatable {
 
         init(item: TAPLibraryItem) {
             id = item.id
-            destination = DepthAlbumRouteAdapter.destination(for: item)
+            destination = TAPLibraryRouteAdapter.destination(for: item)
             routeAnchor = item.routeAnchor
             expectsPairedVideo = item.isLivePhoto
             mediaVersion = item.summary.version
@@ -139,7 +139,7 @@ nonisolated struct DepthAlbumDeletionContext: Equatable {
     }
 }
 
-nonisolated struct DepthAlbumAnalysisRoute: Hashable {
+nonisolated struct LibraryPhotoRoute: Hashable {
     let itemID: String
     let source: DepthAnalysisSource
 

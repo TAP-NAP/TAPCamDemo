@@ -176,7 +176,7 @@ extension CameraViewModel {
 
         let pixelLength = 256
         let cacheKey = item.thumbnailCacheKey(pixelLength: pixelLength)
-        if let poster = DepthAlbumThumbnailMemoryCache.shared.poster(for: cacheKey) {
+        if let poster = LibraryThumbnailMemoryCache.shared.poster(for: cacheKey) {
             publishRecentLibraryPhase(.ready(poster), request: request, kind: kind)
             return
         }
@@ -317,7 +317,7 @@ extension CameraViewModel {
         data: Data,
         cacheKey: String
     ) async -> MediaFetchPhase<MediaPoster, MediaPoster> {
-        guard let poster = await DepthAlbumThumbnailDecoder.shared.decodedThumbnail(
+        guard let poster = await LibraryThumbnailDecoder.shared.decodedThumbnail(
             data: data, cacheKey: cacheKey
         ) else {
             return .failed(nil, reason: .decode, retryable: false)

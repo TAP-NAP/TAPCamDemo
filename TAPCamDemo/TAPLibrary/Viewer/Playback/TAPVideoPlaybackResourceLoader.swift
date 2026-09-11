@@ -227,7 +227,7 @@ enum TAPVideoPlaybackResourceLoader {
         case .pendingCapture(let captureID):
             if let data = try? await TAPPendingCaptureStore.shared
                 .thumbnailData(captureID: captureID) {
-                return await DepthAlbumThumbnailDecoder.image(data: data)
+                return await LibraryThumbnailDecoder.image(data: data)
             }
             guard let fileURL = try? await TAPPendingCaptureStore.shared
                 .bestAvailableVideoURL(captureID: captureID) else {
@@ -237,7 +237,7 @@ enum TAPVideoPlaybackResourceLoader {
         case .ownedCapture(let captureID, let assetID):
             if let data = try? await TAPPendingCaptureStore.shared
                 .thumbnailData(captureID: captureID) {
-                return await DepthAlbumThumbnailDecoder.image(data: data)
+                return await LibraryThumbnailDecoder.image(data: data)
             }
             return await photoPreviewImage(
                 assetID: assetID,
@@ -270,11 +270,11 @@ enum TAPVideoPlaybackResourceLoader {
         case .pendingCapture(let captureID):
             guard let data = try? await TAPPendingCaptureStore.shared
                 .thumbnailData(captureID: captureID) else { return nil }
-            return await DepthAlbumThumbnailDecoder.image(data: data)
+            return await LibraryThumbnailDecoder.image(data: data)
         case .ownedCapture(let captureID, let assetID):
             if let data = try? await TAPPendingCaptureStore.shared
                 .thumbnailData(captureID: captureID) {
-                return await DepthAlbumThumbnailDecoder.image(data: data)
+                return await LibraryThumbnailDecoder.image(data: data)
             }
             return await photoPreviewImage(
                 assetID: assetID,
@@ -375,16 +375,16 @@ enum TAPVideoPlaybackResourceLoader {
         fileURL: URL,
         source: TAPVideoPlaybackSource
     ) async -> UIImage? {
-        guard let data = await DepthAlbumThumbnailLoader.shared.videoData(
+        guard let data = await LibraryThumbnailLoader.shared.videoData(
             for: fileURL,
-            cacheKey: DepthAlbumThumbnailCacheKey.make(
+            cacheKey: LibraryThumbnailCacheKey.make(
                 mediaID: source.libraryMediaID,
                 version: "video-viewer-preview-v1",
                 pixelLength: loadingPreviewPixelLength
             ),
             pixelLength: loadingPreviewPixelLength
         ) else { return nil }
-        return await DepthAlbumThumbnailDecoder.image(data: data)
+        return await LibraryThumbnailDecoder.image(data: data)
     }
 
     private static func photoPreviewImage(

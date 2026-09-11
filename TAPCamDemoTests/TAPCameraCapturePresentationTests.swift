@@ -501,27 +501,27 @@ struct TAPCameraCapturePresentationTests {
         let coordinator = CaptureLifecycleCoordinator()
         var events: [String] = []
         for phase in [ScenePhase.inactive, .background, .active] {
-            route.presentDepthAlbum()
+            route.presentLibrary()
             events.removeAll()
             await coordinator.scenePhaseDidChange(
                 phase,
                 shouldReturnToCameraOnForeground: true,
                 routeStore: route,
                 refreshLibraryPreview: {
-                    #expect(!route.isDepthAlbumPresented)
+                    #expect(!route.isLibraryPresented)
                     events.append("preview")
                 },
                 retryPendingCaptures: { events.append("retry") }
             )
             #expect(events == (phase == .active ? ["preview", "retry"] : []))
-            #expect(route.isDepthAlbumPresented == (phase != .active))
+            #expect(route.isLibraryPresented == (phase != .active))
         }
-        route.presentDepthAlbum()
+        route.presentLibrary()
         await coordinator.scenePhaseDidChange(
             .active, shouldReturnToCameraOnForeground: false, routeStore: route,
             refreshLibraryPreview: {}, retryPendingCaptures: {}
         )
-        #expect(route.isDepthAlbumPresented)
+        #expect(route.isLibraryPresented)
     }
 
     @Test @MainActor func credentialCompletionRetriesOnlyOnTheFallingEdge() async {
@@ -544,7 +544,7 @@ struct TAPCameraCapturePresentationTests {
     @Test(.timeLimit(.minutes(1))) @MainActor
     func libraryReturnWaitsForCameraButNotPendingRecovery() async throws {
         let coordinator = CaptureLifecycleCoordinator()
-        let hiddenTask = coordinator.depthAlbumPresentationDidChange(
+        let hiddenTask = coordinator.libraryPresentationDidChange(
             isPresented: true, preparesVideoMode: false,
             canResumeCamera: { false },
             resumeAfterAnalysis: { Issue.record("Opening the library must not resume the camera") },
@@ -561,7 +561,7 @@ struct TAPCameraCapturePresentationTests {
                 var result: CaptureLifecycleCoordinator.LibraryReturnResult?
                 let (started, startedContinuation) = AsyncStream<Void>.makeStream()
                 let (release, releaseContinuation) = AsyncStream<Void>.makeStream()
-                let requestedTask = coordinator.depthAlbumPresentationDidChange(
+                let requestedTask = coordinator.libraryPresentationDidChange(
                     isPresented: false, preparesVideoMode: video,
                     canResumeCamera: { true },
                     resumeAfterAnalysis: { events.append("resume") },
@@ -603,7 +603,7 @@ struct TAPCameraCapturePresentationTests {
                         startedContinuation.finish()
                     }
                 }
-                let requestedTask = coordinator.depthAlbumPresentationDidChange(
+                let requestedTask = coordinator.libraryPresentationDidChange(
                     isPresented: false, preparesVideoMode: true,
                     canResumeCamera: { presentation.canResumeCamera },
                     resumeAfterAnalysis: {
@@ -639,7 +639,7 @@ struct TAPCameraCapturePresentationTests {
                 #expect(!coordinator.isChangingCaptureMode)
                 if cancelTask {
                     var recovered = false
-                    let recovery = coordinator.depthAlbumPresentationDidChange(
+                    let recovery = coordinator.libraryPresentationDidChange(
                         isPresented: false, preparesVideoMode: true,
                         canResumeCamera: { presentation.canResumeCamera },
                         resumeAfterAnalysis: { needsForegroundResume = false },
@@ -673,7 +673,7 @@ struct TAPCameraCapturePresentationTests {
                 prepareVideoMode: prepare, restorePhotoMode: {},
                 completion: { _ in Issue.record("The replaced mode change cannot publish failure") })
         } else {
-            firstRequest = coordinator.depthAlbumPresentationDidChange(
+            firstRequest = coordinator.libraryPresentationDidChange(
                 isPresented: false, preparesVideoMode: true,
                 canResumeCamera: { true }, resumeAfterAnalysis: {},
                 prepareVideoMode: prepare,
@@ -684,7 +684,7 @@ struct TAPCameraCapturePresentationTests {
         let first = try #require(firstRequest)
         var iterator = started.makeAsyncIterator()
         #expect(await iterator.next() != nil)
-        let replacementRequest = coordinator.depthAlbumPresentationDidChange(
+        let replacementRequest = coordinator.libraryPresentationDidChange(
             isPresented: false, preparesVideoMode: true,
             canResumeCamera: { true },
             resumeAfterAnalysis: { events.append("current-resume") },

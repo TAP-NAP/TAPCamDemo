@@ -1,5 +1,5 @@
 //
-//  DepthAlbumPhotoCatalog.swift
+//  LibraryPhotoCatalog.swift
 //  TAPCamDemo
 //
 
@@ -7,7 +7,7 @@ import Foundation
 
 /// A lightweight, Sendable Photos asset value used for catalog ordering,
 /// identity, routing, and tests. PhotoKit objects never cross this boundary.
-nonisolated struct DepthAlbumPhotoAsset: Equatable, Sendable {
+nonisolated struct LibraryPhotoAsset: Equatable, Sendable {
     let localIdentifier: String
     let creationDate: Date?
     let modificationDate: Date?
@@ -39,16 +39,16 @@ nonisolated struct DepthAlbumPhotoAsset: Equatable, Sendable {
 /// to reconcile app-owned records. Album membership and exported lookup are
 /// intentionally fetched together so the MainActor never performs per-record
 /// PhotoKit queries.
-nonisolated struct DepthAlbumPhotoCatalogSnapshot: Equatable, Sendable {
-    let albumAssets: [DepthAlbumPhotoAsset]
-    let assetsByLocalIdentifier: [String: DepthAlbumPhotoAsset]
+nonisolated struct LibraryPhotoCatalogSnapshot: Equatable, Sendable {
+    let albumAssets: [LibraryPhotoAsset]
+    let assetsByLocalIdentifier: [String: LibraryPhotoAsset]
 
     init(
-        albumAssets: [DepthAlbumPhotoAsset],
-        resolvedAssets: [DepthAlbumPhotoAsset] = []
+        albumAssets: [LibraryPhotoAsset],
+        resolvedAssets: [LibraryPhotoAsset] = []
     ) {
         self.albumAssets = albumAssets
-        var assetsByLocalIdentifier: [String: DepthAlbumPhotoAsset] = [:]
+        var assetsByLocalIdentifier: [String: LibraryPhotoAsset] = [:]
         assetsByLocalIdentifier.reserveCapacity(albumAssets.count + resolvedAssets.count)
         for asset in albumAssets + resolvedAssets {
             assetsByLocalIdentifier[asset.localIdentifier] = asset
@@ -56,5 +56,5 @@ nonisolated struct DepthAlbumPhotoCatalogSnapshot: Equatable, Sendable {
         self.assetsByLocalIdentifier = assetsByLocalIdentifier
     }
 
-    static let empty = DepthAlbumPhotoCatalogSnapshot(albumAssets: [])
+    static let empty = LibraryPhotoCatalogSnapshot(albumAssets: [])
 }

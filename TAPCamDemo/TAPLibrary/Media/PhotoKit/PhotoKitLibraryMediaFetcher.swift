@@ -10,19 +10,19 @@ import UIKit
 actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
     private nonisolated static let posterImageManager = PHCachingImageManager()
 
-    func depthAlbumPhotoCatalogSnapshot(
+    func libraryPhotoCatalogSnapshot(
         exportedAssetLocalIdentifiers: Set<String>
-    ) async throws -> DepthAlbumPhotoCatalogSnapshot {
+    ) async throws -> LibraryPhotoCatalogSnapshot {
         try Task.checkCancellation()
         try requireCatalogReadAuthorization()
         try Task.checkCancellation()
 
-        let albumAssets: [DepthAlbumPhotoAsset]
-        if let album = depthAlbumCollection() {
+        let albumAssets: [LibraryPhotoAsset]
+        if let album = libraryCollection() {
             let options = PHFetchOptions()
             options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
             let result = PHAsset.fetchAssets(in: album, options: options)
-            var values: [DepthAlbumPhotoAsset] = []
+            var values: [LibraryPhotoAsset] = []
             values.reserveCapacity(result.count)
             for index in 0..<result.count {
                 values.append(catalogAsset(from: result.object(at: index)))
@@ -32,7 +32,7 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
             albumAssets = []
         }
 
-        let exportedAssets: [DepthAlbumPhotoAsset]
+        let exportedAssets: [LibraryPhotoAsset]
         if exportedAssetLocalIdentifiers.isEmpty {
             exportedAssets = []
         } else {
@@ -40,7 +40,7 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
                 withLocalIdentifiers: exportedAssetLocalIdentifiers.sorted(),
                 options: nil
             )
-            var values: [DepthAlbumPhotoAsset] = []
+            var values: [LibraryPhotoAsset] = []
             values.reserveCapacity(result.count)
             for index in 0..<result.count {
                 values.append(catalogAsset(from: result.object(at: index)))
@@ -48,7 +48,7 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
             exportedAssets = values
         }
 
-        return DepthAlbumPhotoCatalogSnapshot(
+        return LibraryPhotoCatalogSnapshot(
             albumAssets: albumAssets,
             resolvedAssets: exportedAssets
         )
@@ -87,7 +87,7 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
     ) async throws -> MediaFetchPhase<MediaPoster, MediaPoster> {
         try Task.checkCancellation()
         let asset = try Self.asset(localIdentifier: request.assetLocalIdentifier)
-        let cacheKey = DepthAlbumThumbnailCacheKey.make(
+        let cacheKey = LibraryThumbnailCacheKey.make(
             assetLocalIdentifier: asset.localIdentifier,
             pixelLength: max(pixelLength, 1),
             pixelWidth: asset.pixelWidth,
@@ -257,7 +257,7 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
         progress: @escaping @Sendable (Double?) -> Void
     ) async throws -> MediaFetchPhase<MediaPoster, MediaPoster> {
         let manager = Self.posterImageManager
-        let bridge = DepthAlbumPhotoKitImageRequestBridge(
+        let bridge = PhotoKitThumbnailRequestBridge(
             cacheKey: cacheKey,
             acceptsDegradedResult: !allowsNetworkAccess
         ) {
@@ -325,7 +325,7 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
         }
     }
 
-    private func depthAlbumCollection() -> PHAssetCollection? {
+    private func libraryCollection() -> PHAssetCollection? {
         let options = PHFetchOptions()
         options.predicate = NSPredicate(
             format: "title == %@",
@@ -338,8 +338,8 @@ actor PhotoKitLibraryMediaFetcher: LibraryMediaFetching {
         ).firstObject
     }
 
-    private func catalogAsset(from asset: PHAsset) -> DepthAlbumPhotoAsset {
-        DepthAlbumPhotoAsset(
+    private func catalogAsset(from asset: PHAsset) -> LibraryPhotoAsset {
+        LibraryPhotoAsset(
             localIdentifier: asset.localIdentifier,
             creationDate: asset.creationDate,
             modificationDate: asset.modificationDate,

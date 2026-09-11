@@ -126,7 +126,7 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     }
 
     @MainActor @discardableResult
-    func depthAlbumPresentationDidChange(
+    func libraryPresentationDidChange(
         isPresented: Bool,
         preparesVideoMode: Bool,
         canResumeCamera: @escaping @MainActor () -> Bool,

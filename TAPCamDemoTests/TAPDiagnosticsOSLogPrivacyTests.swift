@@ -90,10 +90,10 @@ struct TAPDiagnosticsOSLogPrivacyTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func coldPathMilestonesOmitMediaIdentifiersAndFilePaths() throws {
         let providerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/MediaLibrary/DepthAlbumItemProvider.swift"
+            relativePath: "TAPCamDemo/TAPLibrary/Catalog/LibraryCatalogReconciler.swift"
         )
         let playbackSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/Viewer/Playback/TAPVideoPlaybackSession.swift"
+            relativePath: "TAPCamDemo/TAPLibrary/Viewer/Playback/TAPVideoPlaybackSession.swift"
         )
 
         #expect(!providerSource.contains("latestPending="))

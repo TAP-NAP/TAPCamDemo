@@ -157,7 +157,7 @@ struct PendingCaptureQueueBatchTests {
         _ = try await store.markExported(captureID: "exported", assetLocalIdentifier: "photos-id")
         var loadCount = 0
         var photoIDs = Set<String>()
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: {
                 loadCount += 1
                 return try await store.allRecords()

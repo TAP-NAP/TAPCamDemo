@@ -48,7 +48,7 @@ final class TAPLibraryPagingPreviewCache {
 /// Heavy media ownership remains with the committed current renderer.
 nonisolated struct TAPLibraryViewerPagingEntry: Identifiable, Hashable {
     let id: String
-    let destination: DepthAlbumRouteAdapter.Destination
+    let destination: TAPLibraryRouteAdapter.Destination
     let expectsPairedVideo: Bool
     let mediaVersion: LibraryMediaVersion?
     let mediaID: LibraryMediaID
@@ -60,7 +60,7 @@ nonisolated struct TAPLibraryViewerPagingEntry: Identifiable, Hashable {
 
     init(
         id: String,
-        destination: DepthAlbumRouteAdapter.Destination,
+        destination: TAPLibraryRouteAdapter.Destination,
         expectsPairedVideo: Bool = false,
         mediaVersion: LibraryMediaVersion? = nil,
         mediaID: LibraryMediaID? = nil,
@@ -79,7 +79,7 @@ nonisolated struct TAPLibraryViewerPagingEntry: Identifiable, Hashable {
         }()
     }
 
-    init(_ entry: DepthAlbumDeletionContext.Entry) {
+    init(_ entry: LibraryDeletionContext.Entry) {
         id = entry.id
         destination = entry.destination
         expectsPairedVideo = entry.expectsPairedVideo

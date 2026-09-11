@@ -213,7 +213,7 @@ nonisolated struct DepthAnalysisDisplayPhotoLoader {
             ) else {
                 return nil
             }
-            return await DepthAlbumThumbnailDecoder.image(data: data)
+            return await LibraryThumbnailDecoder.image(data: data)
         }
     }
 

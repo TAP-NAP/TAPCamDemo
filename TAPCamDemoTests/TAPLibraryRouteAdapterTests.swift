@@ -1,5 +1,5 @@
 //
-//  DepthAlbumRouteAdapterTests.swift
+//  TAPLibraryRouteAdapterTests.swift
 //  TAPCamDemoTests
 //
 
@@ -7,20 +7,20 @@ import Foundation
 import Testing
 @testable import TAPCamDemo
 
-struct DepthAlbumRouteAdapterTests {
+struct TAPLibraryRouteAdapterTests {
     @Test func preservesPhotoAndVideoItemIdentity() throws {
         let items = TAPLibraryItem.merged(
             pendingRecords: [],
             exportedRecords: [],
             photoAssets: [
-                DepthAlbumPhotoAsset(localIdentifier: "photo-route"),
-                DepthAlbumPhotoAsset(localIdentifier: "video-route", isVideo: true)
+                LibraryPhotoAsset(localIdentifier: "photo-route"),
+                LibraryPhotoAsset(localIdentifier: "video-route", isVideo: true)
             ]
         )
         let photoItem = try #require(items.first { !$0.isVideo })
         let videoItem = try #require(items.first { $0.isVideo })
 
-        switch DepthAlbumRouteAdapter.destination(for: photoItem) {
+        switch TAPLibraryRouteAdapter.destination(for: photoItem) {
         case .analysis(let route):
             #expect(route.itemID == photoItem.id)
             #expect(route.source == .photosAsset("photo-route"))
@@ -28,7 +28,7 @@ struct DepthAlbumRouteAdapterTests {
             Issue.record("Photo item was adapted to video playback")
         }
 
-        switch DepthAlbumRouteAdapter.destination(for: videoItem) {
+        switch TAPLibraryRouteAdapter.destination(for: videoItem) {
         case .analysis:
             Issue.record("Video item was adapted to photo analysis")
         case .video(let route):
@@ -63,7 +63,7 @@ struct DepthAlbumRouteAdapterTests {
         let pendingVideoID = "capture:video-c"
         let photosVideoID = "photos:video-d"
         let lastPhotoID = "photos:still-e"
-        let context = DepthAlbumDeletionContext(currentItemID: liveID, items: items)
+        let context = LibraryDeletionContext(currentItemID: liveID, items: items)
 
         #expect(context.entries.map(\.id) == items.map(\.id))
 
@@ -86,7 +86,7 @@ struct DepthAlbumRouteAdapterTests {
         #expect(context.adjacentEntry(offset: -1, excluding: ["photos:still-a"]) == nil)
         #expect(context.adjacentEntry(offset: 2) == nil)
 
-        let deletingVideo = DepthAlbumDeletionContext(
+        let deletingVideo = LibraryDeletionContext(
             currentItemID: pendingVideoID,
             items: items
         )
@@ -103,7 +103,7 @@ struct DepthAlbumRouteAdapterTests {
             excluding: Set(items.map(\.id))
         ) == nil)
 
-        let unknownCursor = DepthAlbumDeletionContext(
+        let unknownCursor = LibraryDeletionContext(
             currentItemID: "missing-current",
             items: items
         )
@@ -111,7 +111,7 @@ struct DepthAlbumRouteAdapterTests {
             excluding: ["missing-current"]
         ) == nil)
 
-        let deletingPhotosVideo = DepthAlbumDeletionContext(
+        let deletingPhotosVideo = LibraryDeletionContext(
             currentItemID: photosVideoID,
             items: items
         )
@@ -122,7 +122,7 @@ struct DepthAlbumRouteAdapterTests {
 
     @Test @MainActor func mixedViewerCrossesEveryMediaTypeBoundaryWithoutSkipping() {
         let items = Self.mixedMediaItems()
-        let context = DepthAlbumDeletionContext(currentItemID: items[0].id, items: items)
+        let context = LibraryDeletionContext(currentItemID: items[0].id, items: items)
         let entries = context.entries.map(TAPLibraryViewerPagingEntry.init)
         let loader = DepthAnalysisProgressivePhotoLoader(
             thumbnailLoader: { _, _ in nil },
@@ -132,7 +132,7 @@ struct DepthAlbumRouteAdapterTests {
         for (index, entry) in entries.enumerated() {
             store.select(entry, pixelLength: 80, prewarmCurrentPlaneGeometry: false)
             #expect(store.currentItemID == items[index].id)
-            #expect(store.currentPagingEntry?.destination == DepthAlbumRouteAdapter.destination(for: items[index]))
+            #expect(store.currentPagingEntry?.destination == TAPLibraryRouteAdapter.destination(for: items[index]))
             let expectedIDs = items[max(0, index - 1)...min(items.count - 1, index + 1)].map(\.id)
             #expect(store.windowPagingEntries.map(\.id) == expectedIDs)
         }
@@ -153,7 +153,7 @@ struct DepthAlbumRouteAdapterTests {
             pendingRecords: [],
             exportedRecords: [record],
             photoAssets: [
-                DepthAlbumPhotoAsset(
+                LibraryPhotoAsset(
                     localIdentifier: "legacy-live-asset",
                     creationDate: capturedAt,
                     isLivePhoto: true
@@ -161,7 +161,7 @@ struct DepthAlbumRouteAdapterTests {
             ]
         )
         let item = try #require(items.first)
-        let context = DepthAlbumDeletionContext(currentItemID: item.id, items: items)
+        let context = LibraryDeletionContext(currentItemID: item.id, items: items)
         let store = TAPLibraryViewerStore(entries: context.entries.map(TAPLibraryViewerPagingEntry.init),
             currentItemID: item.id)
         let entry = try #require(store.currentEntry)
@@ -187,21 +187,21 @@ struct DepthAlbumRouteAdapterTests {
             pendingRecords: [pendingVideo],
             exportedRecords: [],
             photoAssets: [
-                DepthAlbumPhotoAsset(
+                LibraryPhotoAsset(
                     localIdentifier: "still-e",
                     creationDate: Date(timeIntervalSince1970: 100)
                 ),
-                DepthAlbumPhotoAsset(
+                LibraryPhotoAsset(
                     localIdentifier: "video-d",
                     creationDate: Date(timeIntervalSince1970: 200),
                     isVideo: true
                 ),
-                DepthAlbumPhotoAsset(
+                LibraryPhotoAsset(
                     localIdentifier: "live-b",
                     creationDate: Date(timeIntervalSince1970: 400),
                     isLivePhoto: true
                 ),
-                DepthAlbumPhotoAsset(
+                LibraryPhotoAsset(
                     localIdentifier: "still-a",
                     creationDate: Date(timeIntervalSince1970: 500)
                 )

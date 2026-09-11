@@ -19,7 +19,7 @@ nonisolated struct AVAssetLibraryVideoPosterGenerator: LibraryVideoPosterGenerat
         cacheKey: String,
         pixelLength: Int = 512
     ) async throws -> Data {
-        guard let data = await DepthAlbumThumbnailLoader.shared.videoData(
+        guard let data = await LibraryThumbnailLoader.shared.videoData(
             for: videoURL,
             cacheKey: cacheKey,
             pixelLength: pixelLength
@@ -106,7 +106,7 @@ nonisolated struct PendingCaptureVideoPosterBackfillSource: LibraryVideoPosterBa
             candidates.append(LibraryVideoPosterBackfillCandidate(
                 captureID: record.captureID,
                 videoURL: videoURL,
-                cacheKey: DepthAlbumThumbnailCacheKey.make(
+                cacheKey: LibraryThumbnailCacheKey.make(
                     mediaID: .tapCapture(record.captureID),
                     version: revision,
                     pixelLength: 512

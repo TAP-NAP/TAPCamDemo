@@ -80,7 +80,7 @@ struct TAPVideoPlaybackTransportTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let artifact = try await TAPVideoPlaybackFixtureGenerator.generate(scenario: .pointCloud, outputDirectoryURL: directory)
         let id = UUID().uuidString
-        let destination = DepthAlbumRouteAdapter.Destination.video(TAPVideoPlaybackRoute(
+        let destination = TAPLibraryRouteAdapter.Destination.video(TAPVideoPlaybackRoute(
             itemID: id, source: .fixtureFile(artifact.fileURL, automaticSeekScheduleSeconds: [], autoPlay: false)))
         let entry = TAPLibraryViewerPagingEntry(id: id, destination: destination,
             mediaVersion: LibraryMediaVersion(contentRevision: "1", posterRevision: "1"))

@@ -401,7 +401,7 @@ extension CameraViewModel {
             let videoURL = try await pendingCaptureStore.videoArtifactURL(
                 captureID: record.captureID
             )
-            let cacheKey = DepthAlbumThumbnailCacheKey.make(
+            let cacheKey = LibraryThumbnailCacheKey.make(
                 mediaID: .tapCapture(record.captureID),
                 version: "video-poster-v1|\(record.updatedAt.timeIntervalSince1970)",
                 pixelLength: 512

@@ -1,5 +1,5 @@
 //
-//  DepthAlbumPickerViewModel.swift
+//  TAPLibraryViewModel.swift
 //  TAPCamDemo
 //
 
@@ -7,7 +7,7 @@ import Combine
 import Foundation
 
 @MainActor
-final class DepthAlbumPickerViewModel: ObservableObject {
+final class TAPLibraryViewModel: ObservableObject {
     private let libraryStore: LibraryMediaStore
 
     var items: [TAPLibraryItem] {
@@ -30,11 +30,11 @@ final class DepthAlbumPickerViewModel: ObservableObject {
     }
 
     init(
-        itemProvider: DepthAlbumItemProvider? = nil,
+        catalogReconciler: LibraryCatalogReconciler? = nil,
         libraryStore: LibraryMediaStore? = nil
     ) {
         self.libraryStore = libraryStore ?? LibraryMediaStore(
-            itemProvider: itemProvider,
+            catalogReconciler: catalogReconciler,
             observesChanges: false
         )
     }

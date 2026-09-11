@@ -29,7 +29,7 @@ enum CameraRoutePreferences {
 final class CameraRouteStore: ObservableObject {
     enum Destination: Equatable {
         case camera
-        case depthAlbum
+        case tapLibrary
     }
 
     struct AlbumState: Equatable {
@@ -54,24 +54,24 @@ final class CameraRouteStore: ObservableObject {
         self.persistedContext = contextStore.loadContext()
     }
 
-    var isDepthAlbumPresented: Bool {
-        destination == .depthAlbum
+    var isLibraryPresented: Bool {
+        destination == .tapLibrary
     }
 
-    var depthAlbumRestoreAnchorID: String? {
+    var libraryRestoreAnchorID: String? {
         albumState.restoreAnchorID
     }
 
-    func setDepthAlbumPresented(_ isPresented: Bool) {
+    func setLibraryPresented(_ isPresented: Bool) {
         if isPresented {
-            presentDepthAlbum()
+            presentLibrary()
         } else {
             returnToCamera()
         }
     }
 
-    func presentDepthAlbum() {
-        destination = .depthAlbum
+    func presentLibrary() {
+        destination = .tapLibrary
     }
 
     func returnToCamera() {
@@ -83,12 +83,12 @@ final class CameraRouteStore: ObservableObject {
         destination = .camera
     }
 
-    func recordVisibleDepthAlbumItem(_ anchor: CameraRouteAlbumAnchor) {
+    func recordVisibleLibraryItem(_ anchor: CameraRouteAlbumAnchor) {
         scrollAnchorItem = anchor
         albumState.scrollAnchorItemID = anchor.itemID
     }
 
-    func openDepthAlbumItem(_ anchor: CameraRouteAlbumAnchor) {
+    func openLibraryItem(_ anchor: CameraRouteAlbumAnchor) {
         selectedItemAnchor = anchor
         scrollAnchorItem = anchor
         albumState.selectedItemID = anchor.itemID
@@ -96,27 +96,27 @@ final class CameraRouteStore: ObservableObject {
         persistAlbumState()
     }
 
-    func recordVisibleDepthAlbumItem(id: String) {
+    func recordVisibleLibraryItem(id: String) {
         guard let anchor = CameraRouteAlbumAnchor(itemID: id) else {
             return
         }
-        recordVisibleDepthAlbumItem(anchor)
+        recordVisibleLibraryItem(anchor)
     }
 
-    func openDepthAlbumItem(id: String) {
+    func openLibraryItem(id: String) {
         guard let anchor = CameraRouteAlbumAnchor(itemID: id) else {
             return
         }
-        openDepthAlbumItem(anchor)
+        openLibraryItem(anchor)
     }
 
-    func validDepthAlbumRestoreAnchorID(availableItems: [CameraRouteAlbumAnchor]) -> String? {
+    func validLibraryRestoreAnchorID(availableItems: [CameraRouteAlbumAnchor]) -> String? {
         guard !availableItems.isEmpty else {
             return nil
         }
 
         let availableItemIDs = Set(availableItems.map(\.itemID))
-        if let anchorID = depthAlbumRestoreAnchorID,
+        if let anchorID = libraryRestoreAnchorID,
            availableItemIDs.contains(anchorID) {
             return anchorID
         }
@@ -132,8 +132,8 @@ final class CameraRouteStore: ObservableObject {
         return nil
     }
 
-    func validDepthAlbumRestoreAnchorID(availableItemIDs: Set<String>) -> String? {
-        validDepthAlbumRestoreAnchorID(
+    func validLibraryRestoreAnchorID(availableItemIDs: Set<String>) -> String? {
+        validLibraryRestoreAnchorID(
             availableItems: availableItemIDs.compactMap { CameraRouteAlbumAnchor(itemID: $0) }
         )
     }

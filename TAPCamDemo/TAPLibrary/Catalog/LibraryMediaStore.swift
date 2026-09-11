@@ -11,7 +11,7 @@ import Photos
 @MainActor
 @Observable
 final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
-    typealias SnapshotLoader = @MainActor () async throws -> DepthAlbumItemSnapshot
+    typealias SnapshotLoader = @MainActor () async throws -> LibraryCatalogSnapshot
 
     private(set) var snapshot: LibraryMediaSnapshot = .empty
     private(set) var items: [TAPLibraryItem] = []
@@ -26,7 +26,7 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
     @ObservationIgnored
     private var refreshGeneration: UInt64 = 0
     @ObservationIgnored
-    private var inFlightRefreshTask: Task<DepthAlbumItemSnapshot?, Never>?
+    private var inFlightRefreshTask: Task<LibraryCatalogSnapshot?, Never>?
     @ObservationIgnored
     private var scheduledRefreshTask: Task<Void, Never>?
     @ObservationIgnored
@@ -39,7 +39,7 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
     private let unregisterPhotoLibraryChangeObserver: (any PHPhotoLibraryChangeObserver) -> Void
 
     init(
-        itemProvider: DepthAlbumItemProvider? = nil,
+        catalogReconciler: LibraryCatalogReconciler? = nil,
         photoCatalog: PhotoKitLibraryMediaFetcher? = nil,
         notificationCenter: NotificationCenter = .default,
         observesChanges: Bool = false,
@@ -50,7 +50,7 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
             PHPhotoLibrary.shared().unregisterChangeObserver($0)
         }
     ) {
-        let provider = itemProvider ?? DepthAlbumItemProvider(
+        let provider = catalogReconciler ?? LibraryCatalogReconciler(
             photoCatalog: photoCatalog ?? PhotoKitLibraryMediaFetcher()
         )
         self.snapshotLoader = {
@@ -128,7 +128,7 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
     /// publish, so a slow Photos callback cannot restore a deleted or
     /// superseded item.
     @discardableResult
-    func refresh() async -> DepthAlbumItemSnapshot? {
+    func refresh() async -> LibraryCatalogSnapshot? {
         await startRefresh()
     }
 
@@ -136,7 +136,7 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
     /// catalog at once. Callers that intentionally need a newer generation use
     /// `refresh()` instead.
     @discardableResult
-    func refreshSharingInFlightLoad() async -> DepthAlbumItemSnapshot? {
+    func refreshSharingInFlightLoad() async -> LibraryCatalogSnapshot? {
         if let inFlightRefreshTask {
             return await inFlightRefreshTask.value
         }
@@ -148,9 +148,9 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
     /// PhotoKit. A missing or failed snapshot joins the current load or starts
     /// one; explicit change notifications continue to use `refresh()`.
     @discardableResult
-    func cachedSnapshotOrRefresh() async -> DepthAlbumItemSnapshot? {
+    func cachedSnapshotOrRefresh() async -> LibraryCatalogSnapshot? {
         if hasUsableSnapshot {
-            return DepthAlbumItemSnapshot(
+            return LibraryCatalogSnapshot(
                 items: items,
                 summaries: snapshot.items,
                 photoAssetsError: photoAssetsError
@@ -160,12 +160,12 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
         return await refreshSharingInFlightLoad()
     }
 
-    private func startRefresh() async -> DepthAlbumItemSnapshot? {
+    private func startRefresh() async -> LibraryCatalogSnapshot? {
         refreshGeneration &+= 1
         let generation = refreshGeneration
         isRefreshing = true
 
-        let task = Task<DepthAlbumItemSnapshot?, Never> { @MainActor [weak self] in
+        let task = Task<LibraryCatalogSnapshot?, Never> { @MainActor [weak self] in
             guard let self else {
                 return nil
             }
@@ -175,7 +175,7 @@ final class LibraryMediaStore: NSObject, PHPhotoLibraryChangeObserver {
         return await task.value
     }
 
-    private func performRefresh(generation: UInt64) async -> DepthAlbumItemSnapshot? {
+    private func performRefresh(generation: UInt64) async -> LibraryCatalogSnapshot? {
         defer {
             if refreshGeneration == generation {
                 inFlightRefreshTask = nil

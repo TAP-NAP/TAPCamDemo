@@ -59,8 +59,8 @@ struct CameraViewLifecycleModifier: ViewModifier {
             }
             .onAppear(perform: viewDidAppear)
             .onDisappear(perform: viewDidDisappear)
-            .onChange(of: routeStore.isDepthAlbumPresented) { _, isPresented in
-                depthAlbumPresentationDidChange(isPresented)
+            .onChange(of: routeStore.isLibraryPresented) { _, isPresented in
+                libraryPresentationDidChange(isPresented)
             }
             .onChange(of: scenePhase) { _, phase in
                 scenePhaseDidChange(phase)
@@ -89,12 +89,12 @@ struct CameraViewLifecycleModifier: ViewModifier {
         CameraIdleTimerController.setCameraScreenIdleTimerDisabled(false)
     }
 
-    private func depthAlbumPresentationDidChange(_ isPresented: Bool) {
+    private func libraryPresentationDidChange(_ isPresented: Bool) {
         updateIdleTimerForCurrentPresentation()
-        lifecycleCoordinator.depthAlbumPresentationDidChange(
+        lifecycleCoordinator.libraryPresentationDidChange(
             isPresented: isPresented,
             preparesVideoMode: resumesVideoModeAfterLibrary,
-            canResumeCamera: { scenePhase == .active && !routeStore.isDepthAlbumPresented },
+            canResumeCamera: { scenePhase == .active && !routeStore.isLibraryPresented },
             resumeAfterAnalysis: viewModel.resumeAfterAnalysis,
             prepareVideoMode: { await viewModel.prepareVideoModeIfNeeded() },
             isCameraReady: { viewModel.activeSessionConfiguration != nil },
@@ -114,8 +114,8 @@ struct CameraViewLifecycleModifier: ViewModifier {
         updateIdleTimerForCurrentPresentation()
         if phase != .active {
             lifecycleCoordinator.suspendForInactiveScene(pauseCamera: viewModel.pauseForAnalysis)
-        } else if !routeStore.isDepthAlbumPresented, viewModel.isPausedForAnalysis {
-            depthAlbumPresentationDidChange(false)
+        } else if !routeStore.isLibraryPresented, viewModel.isPausedForAnalysis {
+            libraryPresentationDidChange(false)
         }
         let shouldReturnToCameraOnForeground = lifecycleCoordinator.foregroundRouteRestorePolicy(
             for: phase,
@@ -159,7 +159,7 @@ struct CameraViewLifecycleModifier: ViewModifier {
                 isCameraViewVisible: true,
                 isActiveScene: scenePhase == .active,
                 isSettingsPresented: isSettingsPresented,
-                isLibraryPresented: routeStore.isDepthAlbumPresented
+                isLibraryPresented: routeStore.isLibraryPresented
             )
         )
     }

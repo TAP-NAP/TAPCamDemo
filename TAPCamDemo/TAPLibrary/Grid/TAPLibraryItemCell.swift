@@ -123,7 +123,7 @@ struct TAPLibraryItemCell: View {
             }
         }
         fetchPhase = .resolving(preview)
-        if let cachedPoster = DepthAlbumThumbnailMemoryCache.shared.poster(for: cacheKey) {
+        if let cachedPoster = LibraryThumbnailMemoryCache.shared.poster(for: cacheKey) {
             guard !Task.isCancelled, thumbnailTaskID == cacheKey else {
                 return
             }
@@ -165,7 +165,7 @@ struct TAPLibraryItemCell: View {
                   let videoURL = try? await TAPPendingCaptureStore.shared.bestAvailableVideoURL(
                     captureID: record.captureID
                   ),
-                  let data = await DepthAlbumThumbnailLoader.shared.videoData(
+                  let data = await LibraryThumbnailLoader.shared.videoData(
                     for: videoURL, cacheKey: cacheKey, pixelLength: thumbnailPixelLength
                   ) else {
                 return .failed(nil, reason: .decode, retryable: false)
@@ -183,7 +183,7 @@ struct TAPLibraryItemCell: View {
     }
 
     private func decodedPosterPhase(data: Data, cacheKey: String) async -> MediaFetchPhase<MediaPoster, MediaPoster> {
-        guard let poster = await DepthAlbumThumbnailDecoder.shared.decodedThumbnail(
+        guard let poster = await LibraryThumbnailDecoder.shared.decodedThumbnail(
             data: data, cacheKey: cacheKey
         ) else {
             return .failed(nil, reason: .decode, retryable: false)

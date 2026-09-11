@@ -12,64 +12,64 @@ struct TAPLibraryRouteTests {
         let routeStore = try Self.makeRouteStore()
 
         #expect(routeStore.destination == .camera)
-        #expect(!routeStore.isDepthAlbumPresented)
-        #expect(routeStore.depthAlbumRestoreAnchorID == nil)
+        #expect(!routeStore.isLibraryPresented)
+        #expect(routeStore.libraryRestoreAnchorID == nil)
     }
 
     @Test @MainActor func cameraRouteStoreReturnsToCameraWithoutDroppingAlbumAnchor() throws {
         let routeStore = try Self.makeRouteStore()
 
-        routeStore.presentDepthAlbum()
-        routeStore.openDepthAlbumItem(id: "owned:asset-1")
+        routeStore.presentLibrary()
+        routeStore.openLibraryItem(id: "owned:asset-1")
         routeStore.returnToCamera()
 
         #expect(routeStore.destination == .camera)
-        #expect(!routeStore.isDepthAlbumPresented)
+        #expect(!routeStore.isLibraryPresented)
         #expect(routeStore.albumState.selectedItemID == "owned:asset-1")
-        #expect(routeStore.depthAlbumRestoreAnchorID == "owned:asset-1")
+        #expect(routeStore.libraryRestoreAnchorID == "owned:asset-1")
     }
 
     @Test @MainActor func cameraRouteStoreRestoresCameraOnForeground() throws {
         let routeStore = try Self.makeRouteStore()
 
-        routeStore.presentDepthAlbum()
+        routeStore.presentLibrary()
         routeStore.restoreCameraOnForeground()
 
         #expect(routeStore.destination == .camera)
-        #expect(!routeStore.isDepthAlbumPresented)
+        #expect(!routeStore.isLibraryPresented)
     }
 
     @Test @MainActor func cameraRouteStoreTracksVisibleAndSelectedAlbumAnchors() throws {
         let routeStore = try Self.makeRouteStore()
 
-        routeStore.recordVisibleDepthAlbumItem(id: "photos:visible")
+        routeStore.recordVisibleLibraryItem(id: "photos:visible")
         #expect(routeStore.albumState.scrollAnchorItemID == "photos:visible")
-        #expect(routeStore.depthAlbumRestoreAnchorID == "photos:visible")
+        #expect(routeStore.libraryRestoreAnchorID == "photos:visible")
 
-        routeStore.openDepthAlbumItem(id: "pending:selected")
+        routeStore.openLibraryItem(id: "pending:selected")
         #expect(routeStore.albumState.selectedItemID == "pending:selected")
         #expect(routeStore.albumState.scrollAnchorItemID == "pending:selected")
-        #expect(routeStore.depthAlbumRestoreAnchorID == "pending:selected")
+        #expect(routeStore.libraryRestoreAnchorID == "pending:selected")
     }
 
     @Test @MainActor func cameraRouteStoreUsesLatestVisibleAlbumAnchorForRestore() throws {
         let routeStore = try Self.makeRouteStore()
 
-        routeStore.openDepthAlbumItem(id: "owned:opened")
-        routeStore.recordVisibleDepthAlbumItem(id: "photos:visible-after-open")
+        routeStore.openLibraryItem(id: "owned:opened")
+        routeStore.recordVisibleLibraryItem(id: "photos:visible-after-open")
 
         #expect(routeStore.albumState.selectedItemID == "owned:opened")
         #expect(routeStore.albumState.scrollAnchorItemID == "photos:visible-after-open")
-        #expect(routeStore.depthAlbumRestoreAnchorID == "photos:visible-after-open")
+        #expect(routeStore.libraryRestoreAnchorID == "photos:visible-after-open")
     }
 
     @Test @MainActor func cameraRouteStoreValidatesAlbumAnchorAgainstAvailableItems() throws {
         let routeStore = try Self.makeRouteStore()
 
-        routeStore.openDepthAlbumItem(id: "owned:asset-1")
+        routeStore.openLibraryItem(id: "owned:asset-1")
 
-        #expect(routeStore.validDepthAlbumRestoreAnchorID(availableItemIDs: Set(["owned:asset-1"])) == "owned:asset-1")
-        #expect(routeStore.validDepthAlbumRestoreAnchorID(availableItemIDs: Set(["owned:asset-2"])) == nil)
+        #expect(routeStore.validLibraryRestoreAnchorID(availableItemIDs: Set(["owned:asset-1"])) == "owned:asset-1")
+        #expect(routeStore.validLibraryRestoreAnchorID(availableItemIDs: Set(["owned:asset-2"])) == nil)
     }
 
     @Test @MainActor func cameraRouteStorePersistsAlbumAnchorsAcrossInstances() throws {
@@ -81,13 +81,13 @@ struct TAPLibraryRouteTests {
             assetLocalIdentifier: "asset-1"
         )
 
-        routeStore.openDepthAlbumItem(selectedAnchor)
+        routeStore.openLibraryItem(selectedAnchor)
 
         let reloadedRouteStore = CameraRouteStore(contextStore: contextStore)
 
         #expect(reloadedRouteStore.destination == .camera)
-        #expect(reloadedRouteStore.depthAlbumRestoreAnchorID == nil)
-        #expect(reloadedRouteStore.validDepthAlbumRestoreAnchorID(availableItems: [selectedAnchor]) == "owned:asset-1")
+        #expect(reloadedRouteStore.libraryRestoreAnchorID == nil)
+        #expect(reloadedRouteStore.validLibraryRestoreAnchorID(availableItems: [selectedAnchor]) == "owned:asset-1")
     }
 
     @Test @MainActor func cameraRouteStoreClearsUnavailablePersistedAlbumAnchors() throws {
@@ -99,21 +99,21 @@ struct TAPLibraryRouteTests {
             assetLocalIdentifier: "deleted"
         )
 
-        routeStore.openDepthAlbumItem(deletedAnchor)
+        routeStore.openLibraryItem(deletedAnchor)
 
-        #expect(routeStore.validDepthAlbumRestoreAnchorID(availableItems: [
+        #expect(routeStore.validLibraryRestoreAnchorID(availableItems: [
             Self.sampleAlbumAnchor(itemID: "owned:asset-2", captureID: "capture-2", assetLocalIdentifier: "asset-2")
         ]) == nil)
 
         let reloadedRouteStore = CameraRouteStore(contextStore: contextStore)
-        #expect(reloadedRouteStore.validDepthAlbumRestoreAnchorID(availableItems: [deletedAnchor]) == nil)
+        #expect(reloadedRouteStore.validLibraryRestoreAnchorID(availableItems: [deletedAnchor]) == nil)
     }
 
     @Test @MainActor func cameraRouteStoreMigratesPersistedPendingAnchorToOwnedPhotoAnchor() throws {
         let contextStore = try Self.makeRouteContextStore()
         let routeStore = CameraRouteStore(contextStore: contextStore)
 
-        routeStore.openDepthAlbumItem(
+        routeStore.openLibraryItem(
             Self.sampleAlbumAnchor(itemID: "pending:capture-1", captureID: "capture-1")
         )
 
@@ -124,7 +124,7 @@ struct TAPLibraryRouteTests {
             assetLocalIdentifier: "asset-1"
         )
 
-        #expect(reloadedRouteStore.validDepthAlbumRestoreAnchorID(availableItems: [ownedAnchor]) == "owned:asset-1")
+        #expect(reloadedRouteStore.validLibraryRestoreAnchorID(availableItems: [ownedAnchor]) == "owned:asset-1")
     }
 
     @Test @MainActor func cameraRouteContextPersistsTokensWithoutRawAlbumIdentifiers() throws {
@@ -132,7 +132,7 @@ struct TAPLibraryRouteTests {
         let contextStore = CameraRouteFileContextStore(directoryURL: directoryURL)
         let routeStore = CameraRouteStore(contextStore: contextStore)
 
-        routeStore.openDepthAlbumItem(
+        routeStore.openLibraryItem(
             Self.sampleAlbumAnchor(
                 itemID: "owned:asset-secret",
                 captureID: "capture-secret",
@@ -154,7 +154,7 @@ struct TAPLibraryRouteTests {
         let contextStore = CameraRouteFileContextStore(directoryURL: directoryURL)
         let routeStore = CameraRouteStore(contextStore: contextStore)
 
-        routeStore.openDepthAlbumItem(
+        routeStore.openLibraryItem(
             Self.sampleAlbumAnchor(
                 itemID: "owned:asset-secret",
                 captureID: "capture-secret",
@@ -174,22 +174,22 @@ struct TAPLibraryRouteTests {
         }
     }
 
-    @Test func depthAlbumThumbnailCacheKeyTracksSourceIdentityVersionAndSize() throws {
-        let originalKey = DepthAlbumThumbnailCacheKey.make(
+    @Test func libraryThumbnailCacheKeyTracksSourceIdentityVersionAndSize() throws {
+        let originalKey = LibraryThumbnailCacheKey.make(
             assetLocalIdentifier: "asset-1",
             pixelLength: 240,
             pixelWidth: 4032,
             pixelHeight: 3024,
             versionDate: Date(timeIntervalSince1970: 1_234)
         )
-        let changedVersionKey = DepthAlbumThumbnailCacheKey.make(
+        let changedVersionKey = LibraryThumbnailCacheKey.make(
             assetLocalIdentifier: "asset-1",
             pixelLength: 240,
             pixelWidth: 4032,
             pixelHeight: 3024,
             versionDate: Date(timeIntervalSince1970: 9_999)
         )
-        let changedSizeKey = DepthAlbumThumbnailCacheKey.make(
+        let changedSizeKey = LibraryThumbnailCacheKey.make(
             assetLocalIdentifier: "asset-1",
             pixelLength: 320,
             pixelWidth: 4032,
@@ -200,7 +200,7 @@ struct TAPLibraryRouteTests {
         #expect(changedVersionKey != originalKey)
         #expect(changedSizeKey != originalKey)
         for assetID in ["asset-1", "asset-2"] {
-            let key = DepthAlbumThumbnailCacheKey.make(
+            let key = LibraryThumbnailCacheKey.make(
                 assetLocalIdentifier: assetID,
                 pixelLength: 240,
                 pixelWidth: 4032,
@@ -211,8 +211,8 @@ struct TAPLibraryRouteTests {
         }
     }
 
-    @Test func depthAlbumPendingVideoThumbnailCacheKeyTracksVideoVersion() throws {
-        let originalKey = DepthAlbumThumbnailCacheKey.makePending(
+    @Test func libraryPendingVideoThumbnailCacheKeyTracksVideoVersion() throws {
+        let originalKey = LibraryThumbnailCacheKey.makePending(
             captureID: "video-capture",
             pixelLength: 240,
             capturedAt: Date(timeIntervalSince1970: 1_000),
@@ -220,7 +220,7 @@ struct TAPLibraryRouteTests {
             videoFilename: TAPPendingCaptureBundlePaths.videoArtifactFilename,
             updatedAt: Date(timeIntervalSince1970: 1_001)
         )
-        let signedKey = DepthAlbumThumbnailCacheKey.makePending(
+        let signedKey = LibraryThumbnailCacheKey.makePending(
             captureID: "video-capture",
             pixelLength: 240,
             capturedAt: Date(timeIntervalSince1970: 1_000),
@@ -232,7 +232,7 @@ struct TAPLibraryRouteTests {
         #expect(signedKey != originalKey)
     }
 
-    @Test func depthAlbumItemsPreferOwnedExportsOverDuplicatePhotos() throws {
+    @Test func libraryItemsPreferOwnedExportsOverDuplicatePhotos() throws {
         let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "pending-1",
             capturedAt: Date(timeIntervalSince1970: 300)
@@ -243,13 +243,13 @@ struct TAPLibraryRouteTests {
             status: .exported,
             assetLocalIdentifier: "asset-owned"
         )
-        let ownedAsset = DepthAlbumPhotoAsset(
+        let ownedAsset = LibraryPhotoAsset(
             localIdentifier: "asset-owned",
             creationDate: Date(timeIntervalSince1970: 200),
             pixelWidth: 4_032,
             pixelHeight: 3_024
         )
-        let photosOnlyAsset = DepthAlbumPhotoAsset(
+        let photosOnlyAsset = LibraryPhotoAsset(
             localIdentifier: "asset-plain",
             creationDate: Date(timeIntervalSince1970: 50),
             pixelWidth: 4_032,
@@ -270,7 +270,7 @@ struct TAPLibraryRouteTests {
         ])
     }
 
-    @Test func depthAlbumItemsPublishLivePhotoFlagForPhotosOwnedAndPendingSources() throws {
+    @Test func libraryItemsPublishLivePhotoFlagForPhotosOwnedAndPendingSources() throws {
         let livePending = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "pending-live",
             capturedAt: Date(timeIntervalSince1970: 400),
@@ -287,7 +287,7 @@ struct TAPLibraryRouteTests {
             pairedVideoFilename: TAPPendingCaptureBundlePaths.pairedVideoFilename,
             assetLocalIdentifier: "asset-owned"
         )
-        let ownedAsset = DepthAlbumPhotoAsset(
+        let ownedAsset = LibraryPhotoAsset(
             localIdentifier: "asset-owned",
             creationDate: Date(timeIntervalSince1970: 200),
             modificationDate: nil,
@@ -295,7 +295,7 @@ struct TAPLibraryRouteTests {
             pixelHeight: 0,
             isLivePhoto: false
         )
-        let photosLiveAsset = DepthAlbumPhotoAsset(
+        let photosLiveAsset = LibraryPhotoAsset(
             localIdentifier: "asset-live",
             creationDate: Date(timeIntervalSince1970: 100),
             modificationDate: nil,
@@ -320,7 +320,7 @@ struct TAPLibraryRouteTests {
         #expect(livePhotoFlags["photos:asset-live"] == true)
     }
 
-    @Test func depthAlbumItemsSortByCapturedAtDescending() throws {
+    @Test func libraryItemsSortByCapturedAtDescending() throws {
         let oldPending = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "pending-old",
             capturedAt: Date(timeIntervalSince1970: 10)
@@ -331,11 +331,11 @@ struct TAPLibraryRouteTests {
             status: .exported,
             assetLocalIdentifier: "asset-mid"
         )
-        let ownedAsset = DepthAlbumPhotoAsset(
+        let ownedAsset = LibraryPhotoAsset(
             localIdentifier: "asset-mid",
             creationDate: Date(timeIntervalSince1970: 30)
         )
-        let newestPhotosAsset = DepthAlbumPhotoAsset(
+        let newestPhotosAsset = LibraryPhotoAsset(
             localIdentifier: "asset-newest",
             creationDate: Date(timeIntervalSince1970: 40)
         )
@@ -354,7 +354,7 @@ struct TAPLibraryRouteTests {
         ])
     }
 
-    @Test func depthAlbumItemRouteAnchorsKeepPrivateIdentifiersInMemoryOnly() throws {
+    @Test func libraryItemRouteAnchorsKeepPrivateIdentifiersInMemoryOnly() throws {
         let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "capture-pending",
             capturedAt: Date(timeIntervalSince1970: 300)
@@ -365,8 +365,8 @@ struct TAPLibraryRouteTests {
             status: .exported,
             assetLocalIdentifier: "asset-owned"
         )
-        let ownedAsset = DepthAlbumPhotoAsset(localIdentifier: "asset-owned")
-        let photosOnlyAsset = DepthAlbumPhotoAsset(localIdentifier: "asset-plain")
+        let ownedAsset = LibraryPhotoAsset(localIdentifier: "asset-owned")
+        let photosOnlyAsset = LibraryPhotoAsset(localIdentifier: "asset-plain")
 
         let items = TAPLibraryItem.merged(
             pendingRecords: [pendingRecord],
@@ -384,15 +384,15 @@ struct TAPLibraryRouteTests {
         #expect(anchors["photos:asset-plain"]?.assetLocalIdentifier == "asset-plain")
     }
 
-    @Test @MainActor func depthAlbumItemProviderKeepsPendingItemsWhenPhotosFails() async throws {
+    @Test @MainActor func libraryCatalogReconcilerKeepsPendingItemsWhenPhotosFails() async throws {
         let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "pending-offline",
             capturedAt: Date(timeIntervalSince1970: 100)
         )
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: { [pendingRecord] },
             photoCatalogLoader: { _ in
-                throw DepthAlbumItemProviderTestError.photosUnavailable
+                throw LibraryCatalogReconcilerTestError.photosUnavailable
             }
         )
 
@@ -401,26 +401,26 @@ struct TAPLibraryRouteTests {
         #expect(snapshot.items.map(\.id) == ["capture:pending-offline"])
         #expect(snapshot.photoAssetsError != nil)
 
-        let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
+        let viewModel = TAPLibraryViewModel(catalogReconciler: provider)
         await viewModel.loadForPresentation()
         #expect(viewModel.items.map(\.id) == ["capture:pending-offline"])
         #expect(viewModel.errorMessage == nil)
     }
 
-    @Test @MainActor func depthAlbumPickerPresentationReusesNonemptySnapshot() async throws {
+    @Test @MainActor func tapLibraryPresentationReusesNonemptySnapshot() async throws {
         let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "cached-pending",
             capturedAt: Date(timeIntervalSince1970: 100)
         )
         var loadCount = 0
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: {
                 loadCount += 1
                 return [pendingRecord]
             },
             photoCatalogLoader: { _ in .empty }
         )
-        let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
+        let viewModel = TAPLibraryViewModel(catalogReconciler: provider)
 
         await viewModel.loadForPresentation()
         await viewModel.loadForPresentation()
@@ -429,16 +429,16 @@ struct TAPLibraryRouteTests {
         #expect(viewModel.items.map(\.id) == ["capture:cached-pending"])
     }
 
-    @Test @MainActor func depthAlbumPickerPresentationRefreshesEmptySnapshot() async throws {
+    @Test @MainActor func tapLibraryPresentationRefreshesEmptySnapshot() async throws {
         var loadCount = 0
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: {
                 loadCount += 1
                 return []
             },
             photoCatalogLoader: { _ in .empty }
         )
-        let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
+        let viewModel = TAPLibraryViewModel(catalogReconciler: provider)
 
         await viewModel.loadForPresentation()
         await viewModel.loadForPresentation()
@@ -448,20 +448,20 @@ struct TAPLibraryRouteTests {
         #expect(viewModel.errorMessage == nil)
     }
 
-    @Test @MainActor func depthAlbumPickerPresentationLoadRefreshesCachedEmptySnapshot() async throws {
+    @Test @MainActor func tapLibraryPresentationLoadRefreshesCachedEmptySnapshot() async throws {
         let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "locked-import-pending",
             capturedAt: Date(timeIntervalSince1970: 100)
         )
         var loadCount = 0
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: {
                 defer { loadCount += 1 }
                 return loadCount == 0 ? [] : [pendingRecord]
             },
             photoCatalogLoader: { _ in .empty }
         )
-        let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
+        let viewModel = TAPLibraryViewModel(catalogReconciler: provider)
 
         #expect(viewModel.shouldShowLoading)
 
@@ -478,16 +478,16 @@ struct TAPLibraryRouteTests {
         #expect(!viewModel.shouldShowLoading)
     }
 
-    @Test @MainActor func depthAlbumPickerPresentationRetriesFailedSnapshot() async throws {
+    @Test @MainActor func tapLibraryPresentationRetriesFailedSnapshot() async throws {
         var loadCount = 0
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: {
                 loadCount += 1
-                throw DepthAlbumItemProviderTestError.photosUnavailable
+                throw LibraryCatalogReconcilerTestError.photosUnavailable
             },
             photoCatalogLoader: { _ in .empty }
         )
-        let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
+        let viewModel = TAPLibraryViewModel(catalogReconciler: provider)
 
         await viewModel.loadForPresentation()
         await viewModel.loadForPresentation()
@@ -497,14 +497,14 @@ struct TAPLibraryRouteTests {
         #expect(viewModel.errorMessage == "Unable to load TAP Library. Check Photos access and try again.")
     }
 
-    @Test @MainActor func depthAlbumPickerShowsPhotosErrorOnlyWhenNoItemsSurvive() async throws {
-        let provider = DepthAlbumItemProvider(
+    @Test @MainActor func tapLibraryShowsPhotosErrorOnlyWhenNoItemsSurvive() async throws {
+        let provider = LibraryCatalogReconciler(
             recordsLoader: { [] },
             photoCatalogLoader: { _ in
-                throw DepthAlbumItemProviderTestError.photosUnavailable
+                throw LibraryCatalogReconcilerTestError.photosUnavailable
             }
         )
-        let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
+        let viewModel = TAPLibraryViewModel(catalogReconciler: provider)
 
         await viewModel.loadForPresentation()
 
@@ -513,7 +513,7 @@ struct TAPLibraryRouteTests {
         #expect(viewModel.errorMessage?.contains("Photos unavailable for test") == false)
     }
 
-    @Test @MainActor func depthAlbumPickerTracksSharedStoreFailureAndRecovery() async {
+    @Test @MainActor func tapLibraryTracksSharedStoreFailureAndRecovery() async {
         let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "shared-store-recovery",
             capturedAt: Date(timeIntervalSince1970: 100)
@@ -521,17 +521,17 @@ struct TAPLibraryRouteTests {
         var storeFails = true
         var photosFail = false
         var includesPendingItem = false
-        let store = LibraryMediaStore(itemProvider: DepthAlbumItemProvider(
+        let store = LibraryMediaStore(catalogReconciler: LibraryCatalogReconciler(
             recordsLoader: {
-                if storeFails { throw DepthAlbumItemProviderTestError.photosUnavailable }
+                if storeFails { throw LibraryCatalogReconcilerTestError.photosUnavailable }
                 return includesPendingItem ? [pendingRecord] : []
             },
             photoCatalogLoader: { _ in
-                if photosFail { throw DepthAlbumItemProviderTestError.photosUnavailable }
+                if photosFail { throw LibraryCatalogReconcilerTestError.photosUnavailable }
                 return .empty
             }
         ))
-        let viewModel = DepthAlbumPickerViewModel(libraryStore: store)
+        let viewModel = TAPLibraryViewModel(libraryStore: store)
         await viewModel.loadForPresentation()
         #expect(viewModel.errorMessage == "Unable to load TAP Library. Check Photos access and try again.")
         #expect(!viewModel.shouldShowLoading)
@@ -561,13 +561,13 @@ struct TAPLibraryRouteTests {
         #expect(!viewModel.shouldShowLoading)
     }
 
-    @Test @MainActor func depthAlbumPickerUsesFixedErrorWhenStoreLoadFails() async throws {
+    @Test @MainActor func tapLibraryUsesFixedErrorWhenStoreLoadFails() async throws {
         let sensitivePath = "/private/var/mobile/Containers/Data/capture-private-id"
-        let provider = DepthAlbumItemProvider(
-            recordsLoader: { throw DepthAlbumItemProviderTestError.sensitiveStoreFailure(sensitivePath) },
+        let provider = LibraryCatalogReconciler(
+            recordsLoader: { throw LibraryCatalogReconcilerTestError.sensitiveStoreFailure(sensitivePath) },
             photoCatalogLoader: { _ in .empty }
         )
-        let viewModel = DepthAlbumPickerViewModel(itemProvider: provider)
+        let viewModel = TAPLibraryViewModel(catalogReconciler: provider)
 
         await viewModel.loadForPresentation()
 
@@ -576,7 +576,7 @@ struct TAPLibraryRouteTests {
         #expect(viewModel.errorMessage?.contains(sensitivePath) == false)
     }
 
-    @Test func depthAlbumOwnedThumbnailCacheKeyMatchesPosterRequest() throws {
+    @Test func libraryOwnedThumbnailCacheKeyMatchesPosterRequest() throws {
         let captureID = "capture/private-owned"
         let assetID = "photos-library://asset/private-local-id"
         let exportedRecord = TAPCamDemoTestFixtures.samplePendingRecord(
@@ -585,7 +585,7 @@ struct TAPLibraryRouteTests {
             status: .exported,
             assetLocalIdentifier: assetID
         )
-        let ownedAsset = DepthAlbumPhotoAsset(
+        let ownedAsset = LibraryPhotoAsset(
             localIdentifier: assetID,
             creationDate: Date(timeIntervalSince1970: 100),
             pixelWidth: 4_032,
@@ -605,7 +605,7 @@ struct TAPLibraryRouteTests {
         #expect(cacheKey != item.thumbnailCacheKey(pixelLength: 320))
     }
 
-    @Test func depthAlbumPendingThumbnailCacheKeySurvivesSnapshotRebuild() throws {
+    @Test func libraryPendingThumbnailCacheKeySurvivesSnapshotRebuild() throws {
         let captureID = "capture/private-pending"
         let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: captureID,
@@ -649,7 +649,7 @@ struct TAPLibraryRouteTests {
     }
 }
 
-private enum DepthAlbumItemProviderTestError: LocalizedError {
+private enum LibraryCatalogReconcilerTestError: LocalizedError {
     case photosUnavailable
     case sensitiveStoreFailure(String)
 

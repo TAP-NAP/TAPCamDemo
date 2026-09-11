@@ -45,7 +45,7 @@ nonisolated struct LibraryMediaPosterRequest: Equatable, Hashable, Sendable {
     }
 
     var cacheKey: String {
-        DepthAlbumThumbnailCacheKey.make(
+        LibraryThumbnailCacheKey.make(
             mediaID: itemID,
             version: posterRevision,
             pixelLength: pixelLength

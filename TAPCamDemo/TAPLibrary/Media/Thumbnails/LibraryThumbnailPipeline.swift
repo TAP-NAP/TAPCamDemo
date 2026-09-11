@@ -1,5 +1,5 @@
 //
-//  DepthAlbumThumbnailPipeline.swift
+//  LibraryThumbnailPipeline.swift
 //  TAPCamDemo
 //
 
@@ -10,7 +10,7 @@ import Photos
 import UIKit
 
 /// In-memory revision keys for private thumbnails and PhotoKit presentation identity.
-nonisolated enum DepthAlbumThumbnailCacheKey {
+nonisolated enum LibraryThumbnailCacheKey {
     private static let version = "library-poster-v6"
 
     static func make(mediaID: LibraryMediaID, version mediaVersion: String, pixelLength: Int) -> String {
@@ -60,8 +60,8 @@ nonisolated enum DepthAlbumThumbnailCacheKey {
     }
 }
 
-actor DepthAlbumThumbnailLoader {
-    static let shared = DepthAlbumThumbnailLoader()
+actor LibraryThumbnailLoader {
+    static let shared = LibraryThumbnailLoader()
 
     private var inFlight: [String: Task<Data?, Never>] = [:]
 
@@ -73,7 +73,7 @@ actor DepthAlbumThumbnailLoader {
         let task = Task<Data?, Never>.detached(priority: .utility) {
             let asset = AVURLAsset(url: fileURL)
             guard let image = await Self.image(from: asset, pixelLength: pixelLength),
-                  let data = DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
+                  let data = LibraryThumbnailJPEGRenderer.aspectPreservingData(
                     from: image,
                     maximumPixelLength: pixelLength
                   ) else {
@@ -132,10 +132,10 @@ actor DepthAlbumThumbnailLoader {
 
 /// Coalesces private Pending/video thumbnail decoding off the MainActor.
 /// Photos images arrive ready for presentation and do not pass through here.
-actor DepthAlbumThumbnailDecoder {
+actor LibraryThumbnailDecoder {
     typealias Decode = @Sendable (Data) -> UIImage?
 
-    static let shared = DepthAlbumThumbnailDecoder()
+    static let shared = LibraryThumbnailDecoder()
 
     private struct InFlight {
         let token: UInt64
@@ -146,14 +146,14 @@ actor DepthAlbumThumbnailDecoder {
     private var nextToken: UInt64 = 0
     private let decode: Decode
 
-    init(decode: @escaping Decode = DepthAlbumThumbnailDecoder.decodeForDisplay) {
+    init(decode: @escaping Decode = LibraryThumbnailDecoder.decodeForDisplay) {
         self.decode = decode
     }
 
     func decodedThumbnail(data: Data, cacheKey: String) async -> MediaPoster? {
         guard !Task.isCancelled else { return nil }
         if let cached = await MainActor.run(body: {
-            DepthAlbumThumbnailMemoryCache.shared.poster(for: cacheKey)
+            LibraryThumbnailMemoryCache.shared.poster(for: cacheKey)
         }) {
             return Task.isCancelled ? nil : cached
         }
@@ -174,7 +174,7 @@ actor DepthAlbumThumbnailDecoder {
         let image = await inFlight.task.value
         let poster = image.map { MediaPoster(cacheKey: cacheKey, image: $0) }
         if let poster {
-            await MainActor.run { DepthAlbumThumbnailMemoryCache.shared.insert(poster) }
+            await MainActor.run { LibraryThumbnailMemoryCache.shared.insert(poster) }
         }
         if inFlightByCacheKey[cacheKey]?.token == inFlight.token {
             inFlightByCacheKey[cacheKey] = nil
@@ -216,7 +216,7 @@ actor DepthAlbumThumbnailDecoder {
 /// PhotoKit may omit its result callback after cancellation. The shared
 /// lifecycle owns continuation, request-ID, and terminal-delivery races while
 /// this bridge only interprets poster callbacks and retains a degraded preview.
-nonisolated final class DepthAlbumPhotoKitImageRequestBridge: @unchecked Sendable {
+nonisolated final class PhotoKitThumbnailRequestBridge: @unchecked Sendable {
     private let cacheKey: String
     private let acceptsDegradedResult: Bool
     private let lifecycle: PhotoKitRequestLifecycle<PHImageRequestID, MediaFetchPhase<MediaPoster, MediaPoster>>
@@ -282,7 +282,7 @@ nonisolated final class DepthAlbumPhotoKitImageRequestBridge: @unchecked Sendabl
     }
 }
 
-nonisolated enum DepthAlbumThumbnailJPEGRenderer {
+nonisolated enum LibraryThumbnailJPEGRenderer {
     private static let compressionQuality: CGFloat = 0.78
 
     /// Poster and display-preview bytes preserve the transformed media aspect
@@ -318,8 +318,8 @@ nonisolated enum DepthAlbumThumbnailJPEGRenderer {
 }
 
 @MainActor
-final class DepthAlbumThumbnailMemoryCache {
-    static let shared = DepthAlbumThumbnailMemoryCache()
+final class LibraryThumbnailMemoryCache {
+    static let shared = LibraryThumbnailMemoryCache()
 
     private let cache = NSCache<NSString, UIImage>()
 

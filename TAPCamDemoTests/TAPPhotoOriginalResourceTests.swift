@@ -425,7 +425,7 @@ struct TAPPhotoOriginalResourceTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func resourceAndValidatorSourceHaveNoBackendVerificationDependency() throws {
         let source = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/Viewer/Photo/TAPPhotoOriginalResource.swift"
+            relativePath: "TAPCamDemo/TAPLibrary/Viewer/Photo/TAPPhotoOriginalResource.swift"
         )
         #expect(source.contains("TAPSignedPhotoResourceValidator"))
         #expect(!source.contains("AppAttestCaptureSignatureVerifier"))

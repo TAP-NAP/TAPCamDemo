@@ -94,7 +94,7 @@ struct LibraryMediaTests {
             status: .exported,
             assetLocalIdentifier: "asset-owned"
         )
-        let asset = DepthAlbumPhotoAsset(
+        let asset = LibraryPhotoAsset(
             localIdentifier: "asset-owned",
             creationDate: Date(timeIntervalSince1970: 9_999)
         )
@@ -128,23 +128,23 @@ struct LibraryMediaTests {
             status: .exported,
             assetLocalIdentifier: "asset-owned"
         )
-        let ownedAsset = DepthAlbumPhotoAsset(
+        let ownedAsset = LibraryPhotoAsset(
             localIdentifier: "asset-owned",
             creationDate: Date(timeIntervalSince1970: 200),
             isLivePhoto: true
         )
-        let photosOnlyAsset = DepthAlbumPhotoAsset(
+        let photosOnlyAsset = LibraryPhotoAsset(
             localIdentifier: "asset-photos-only",
             creationDate: Date(timeIntervalSince1970: 100)
         )
         var catalogCallCount = 0
         var requestedExportedAssetIDs = Set<String>()
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: { [exported] },
             photoCatalogLoader: { exportedAssetIDs in
                 catalogCallCount += 1
                 requestedExportedAssetIDs = exportedAssetIDs
-                return DepthAlbumPhotoCatalogSnapshot(
+                return LibraryPhotoCatalogSnapshot(
                     albumAssets: [photosOnlyAsset],
                     resolvedAssets: [ownedAsset]
                 )
@@ -165,7 +165,7 @@ struct LibraryMediaTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func photoKitCatalogKeepsFrameworkObjectsBehindInjectedActorBoundary() throws {
         let providerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/MediaLibrary/DepthAlbumItemProvider.swift"
+            relativePath: "TAPCamDemo/TAPLibrary/Catalog/LibraryCatalogReconciler.swift"
         )
 
         #expect(!providerSource.contains("import Photos"))
@@ -175,7 +175,7 @@ struct LibraryMediaTests {
     @Test(.enabled(if: TAPCamDemoTestSourceInspection.isSourceTreeAvailable, "Source tree is unavailable on this runtime."))
     func providerKeepsScalableLibraryMergeBehindExplicitIsolationBoundary() throws {
         let providerSource = try TAPCamDemoTestSourceInspection.source(
-            relativePath: "TAPCamDemo/MediaLibrary/DepthAlbumItemProvider.swift"
+            relativePath: "TAPCamDemo/TAPLibrary/Catalog/LibraryCatalogReconciler.swift"
         )
 
         #expect(providerSource.contains("let reconciled = await Task.detached(priority: .userInitiated)"))
@@ -214,7 +214,7 @@ struct LibraryMediaTests {
             status: .failedTerminal,
             assetLocalIdentifier: "asset-already-committed"
         )
-        let committedAsset = DepthAlbumPhotoAsset(
+        let committedAsset = LibraryPhotoAsset(
             localIdentifier: "asset-already-committed",
             creationDate: capturedAt,
             isVideo: true
@@ -374,7 +374,7 @@ struct LibraryMediaTests {
 
     @Test func photoKitBridgeCancelsWhenCancellationPrecedesRequestID() async {
         let recorder = PhotoKitCancellationRecorder()
-        let bridge = DepthAlbumPhotoKitImageRequestBridge(
+        let bridge = PhotoKitThumbnailRequestBridge(
             cacheKey: "bridge",
             cancelRequest: { recorder.record($0) }
         )
@@ -399,7 +399,7 @@ struct LibraryMediaTests {
 
     @Test func photoKitBridgeCancelsInstalledRequestExactlyOnce() async {
         let recorder = PhotoKitCancellationRecorder()
-        let bridge = DepthAlbumPhotoKitImageRequestBridge(
+        let bridge = PhotoKitThumbnailRequestBridge(
             cacheKey: "bridge",
             cancelRequest: { recorder.record($0) }
         )
@@ -427,7 +427,7 @@ struct LibraryMediaTests {
 
     @Test func photoKitBridgeFinishesOnceBeforeLateRequestIDInstallation() async throws {
         let recorder = PhotoKitCancellationRecorder()
-        let bridge = DepthAlbumPhotoKitImageRequestBridge(
+        let bridge = PhotoKitThumbnailRequestBridge(
             cacheKey: "bridge",
             cancelRequest: { recorder.record($0) }
         )
@@ -994,11 +994,11 @@ struct LibraryMediaTests {
             capturedAt: Date(timeIntervalSince1970: 2)
         )
         let loader = SequencedPendingLoader(first: [old], second: [newest])
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: { await loader.load() },
             photoCatalogLoader: { _ in .empty }
         )
-        let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
+        let store = LibraryMediaStore(catalogReconciler: provider, observesChanges: false)
 
         let first = Task { @MainActor in await store.refresh() }
         try await Task.sleep(for: .milliseconds(20))
@@ -1012,11 +1012,11 @@ struct LibraryMediaTests {
     }
 
     @Test @MainActor func storePublishesFirstEmptySnapshotOnlyOnce() async {
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: { [] },
             photoCatalogLoader: { _ in .empty }
         )
-        let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
+        let store = LibraryMediaStore(catalogReconciler: provider, observesChanges: false)
 
         _ = await store.refresh()
         let firstRevision = store.snapshot.revision
@@ -1041,7 +1041,7 @@ struct LibraryMediaTests {
     @Test @MainActor func storeChangeObservationIsInertAndIdempotentUntilActivated() async throws {
         let notificationCenter = NotificationCenter()
         var loadCount = 0
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: {
                 loadCount += 1
                 return []
@@ -1051,7 +1051,7 @@ struct LibraryMediaTests {
         var registrations = 0
         var unregistrations = 0
         let store = LibraryMediaStore(
-            itemProvider: provider,
+            catalogReconciler: provider,
             notificationCenter: notificationCenter,
             registerPhotoLibraryChangeObserver: { _ in registrations += 1 },
             unregisterPhotoLibraryChangeObserver: { _ in unregistrations += 1 }
@@ -1091,11 +1091,11 @@ struct LibraryMediaTests {
                 capturedAt: Date(timeIntervalSince1970: Double(index))
             )
         }
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: { records },
             photoCatalogLoader: { _ in .empty }
         )
-        let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
+        let store = LibraryMediaStore(catalogReconciler: provider, observesChanges: false)
 
         _ = await store.refresh()
         let firstRevision = store.snapshot.revision
@@ -1126,11 +1126,11 @@ struct LibraryMediaTests {
             capturedAt: Date(timeIntervalSince1970: 2)
         )
         let loader = SequencedPendingLoader(first: [firstRecord], second: [secondRecord])
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: { await loader.load() },
             photoCatalogLoader: { _ in .empty }
         )
-        let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
+        let store = LibraryMediaStore(catalogReconciler: provider, observesChanges: false)
 
         _ = await store.refresh()
         let firstRevision = store.snapshot.revision
@@ -1150,13 +1150,13 @@ struct LibraryMediaTests {
             captureID: "partial",
             capturedAt: Date(timeIntervalSince1970: 1)
         )
-        let provider = DepthAlbumItemProvider(
+        let provider = LibraryCatalogReconciler(
             recordsLoader: { [record] },
             photoCatalogLoader: { _ in
                 throw NSError(domain: PHPhotosErrorDomain, code: 3)
             }
         )
-        let store = LibraryMediaStore(itemProvider: provider, observesChanges: false)
+        let store = LibraryMediaStore(catalogReconciler: provider, observesChanges: false)
 
         _ = await store.refresh()
         let firstRevision = store.snapshot.revision
@@ -1211,11 +1211,11 @@ struct LibraryMediaTests {
             context.cgContext.fill(CGRect(x: 0, y: 0, width: 900, height: 1_600))
         }
 
-        let landscapeData = try #require(DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
+        let landscapeData = try #require(LibraryThumbnailJPEGRenderer.aspectPreservingData(
             from: landscapeImage,
             maximumPixelLength: 512
         ))
-        let portraitData = try #require(DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
+        let portraitData = try #require(LibraryThumbnailJPEGRenderer.aspectPreservingData(
             from: portraitImage,
             maximumPixelLength: 512
         ))
@@ -1240,7 +1240,7 @@ struct LibraryMediaTests {
         }
         let cgImage = try #require(baseImage.cgImage)
         let rotatedImage = UIImage(cgImage: cgImage, scale: 1, orientation: .left)
-        let data = try #require(DepthAlbumThumbnailJPEGRenderer.aspectPreservingData(
+        let data = try #require(LibraryThumbnailJPEGRenderer.aspectPreservingData(
             from: rotatedImage,
             maximumPixelLength: 512
         ))
@@ -1251,7 +1251,7 @@ struct LibraryMediaTests {
     }
 
     @Test @MainActor func thumbnailDecoderRunsOffMainActorAndCoalescesSameKey() async throws {
-        let cache = DepthAlbumThumbnailMemoryCache.shared
+        let cache = LibraryThumbnailMemoryCache.shared
         cache.removeAll()
         defer { cache.removeAll() }
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8))
@@ -1261,7 +1261,7 @@ struct LibraryMediaTests {
         }
         let jpegData = try #require(sourceImage.jpegData(compressionQuality: 0.8))
         let recorder = ThumbnailDecodeRecorder()
-        let decoder = DepthAlbumThumbnailDecoder { data in
+        let decoder = LibraryThumbnailDecoder { data in
             recorder.recordDecode(isMainThread: Thread.isMainThread)
             Thread.sleep(forTimeInterval: 0.04)
             return UIImage(data: data)
@@ -1285,7 +1285,7 @@ struct LibraryMediaTests {
     }
 
     @Test @MainActor func visiblePosterSurvivesCacheEvictionAndReleasesWhenHidden() {
-        let cache = DepthAlbumThumbnailMemoryCache.shared
+        let cache = LibraryThumbnailMemoryCache.shared
         cache.removeAll()
         defer { cache.removeAll() }
         var visiblePhase: MediaFetchPhase<MediaPoster, MediaPoster> = .idle(nil)
@@ -1324,7 +1324,7 @@ struct LibraryMediaTests {
             UIColor.green.setFill()
             context.cgContext.fill(CGRect(x: 0, y: 0, width: 3, height: 2))
         }
-        let bridge = DepthAlbumPhotoKitImageRequestBridge(cacheKey: "native") { _ in }
+        let bridge = PhotoKitThumbnailRequestBridge(cacheKey: "native") { _ in }
         let phase = try await withCheckedThrowingContinuation { continuation in
             bridge.install(continuation: continuation)
             bridge.receive(image: image, info: [PHImageResultIsDegradedKey: true])
@@ -1343,7 +1343,7 @@ struct LibraryMediaTests {
             UIColor.red.setFill()
             context.cgContext.fill(CGRect(x: 0, y: 0, width: 3, height: 2))
         }
-        let bridge = DepthAlbumPhotoKitImageRequestBridge(
+        let bridge = PhotoKitThumbnailRequestBridge(
             cacheKey: "fast", acceptsDegradedResult: true, cancelRequest: { _ in }
         )
         let phase = try await withCheckedThrowingContinuation { continuation in

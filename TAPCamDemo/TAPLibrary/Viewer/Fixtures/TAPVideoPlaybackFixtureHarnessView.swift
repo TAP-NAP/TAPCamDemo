@@ -23,7 +23,7 @@ struct TAPVideoPlaybackFixtureHarnessView: View {
         Group {
             if pendingDeleteKind == "photo" {
                 NavigationStack {
-                    TAPLibraryViewer(destination: .analysis(DepthAlbumAnalysisRoute(itemID: "pending:ui-test-missing-photo", source: .pendingCapture("ui-test-missing-photo"))))
+                    TAPLibraryViewer(destination: .analysis(LibraryPhotoRoute(itemID: "pending:ui-test-missing-photo", source: .pendingCapture("ui-test-missing-photo"))))
                 }
             } else if pendingDeleteKind == "video" {
                 NavigationStack {
@@ -142,11 +142,11 @@ private struct TAPGalleryFixtureView: View {
     @StateObject private var routeStore = CameraRouteStore(contextStore: CameraRouteFileContextStore(
         directoryURL: FileManager.default.temporaryDirectory.appendingPathComponent("TAPGalleryFixture")
     ))
-    @State private var libraryStore = LibraryMediaStore(itemProvider: DepthAlbumItemProvider(
+    @State private var libraryStore = LibraryMediaStore(catalogReconciler: LibraryCatalogReconciler(
         recordsLoader: { [] },
         photoCatalogLoader: { _ in
-            DepthAlbumPhotoCatalogSnapshot(albumAssets: (0..<160).map { index in
-                DepthAlbumPhotoAsset(localIdentifier: "fixture-\(index)",
+            LibraryPhotoCatalogSnapshot(albumAssets: (0..<160).map { index in
+                LibraryPhotoAsset(localIdentifier: "fixture-\(index)",
                                     creationDate: Date(timeIntervalSince1970: Double(10_000 - index)),
                                     isVideo: index == 1)
             })
@@ -156,7 +156,7 @@ private struct TAPGalleryFixtureView: View {
 
     var body: some View {
         NavigationStack {
-            DepthAlbumPickerView(
+            TAPLibraryView(
                 routeStore: routeStore,
                 libraryStore: libraryStore,
                 mediaFetcher: fetcher,
@@ -172,7 +172,7 @@ private struct TAPGalleryFixtureView: View {
                 .font(.caption2).allowsHitTesting(false)
                 .accessibilityIdentifier("tap.gallery.selection")
         }
-        .task { routeStore.presentDepthAlbum() }
+        .task { routeStore.presentLibrary() }
     }
 }
 

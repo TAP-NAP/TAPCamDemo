@@ -1,5 +1,5 @@
 //
-//  DepthAlbumItemProvider.swift
+//  LibraryCatalogReconciler.swift
 //  TAPCamDemo
 //
 
@@ -8,21 +8,18 @@ import OSLog
 
 /// Snapshot of the TAP Library grid after pending records and Photos assets are
 /// reconciled.
-nonisolated struct DepthAlbumItemSnapshot {
+nonisolated struct LibraryCatalogSnapshot {
     let items: [TAPLibraryItem]
     let summaries: [LibraryMediaSummary]
     let photoAssetsError: Error?
 }
 
-/// Reads the sources that can appear in the TAP Library grid.
-///
-/// The provider keeps partial Photos failures out of the SwiftUI view model:
-/// pending captures can still be shown even when the Photos album cannot be
-/// read. The view decides whether that partial failure should be surfaced.
+/// Merges pending captures with Photos and removes stale exported records.
+/// A Photos read failure preserves pending items and is reported separately.
 @MainActor
-struct DepthAlbumItemProvider {
+struct LibraryCatalogReconciler {
     typealias RecordsLoader = () async throws -> [TAPPendingCaptureRecord]
-    typealias PhotoCatalogLoader = (Set<String>) async throws -> DepthAlbumPhotoCatalogSnapshot
+    typealias PhotoCatalogLoader = (Set<String>) async throws -> LibraryPhotoCatalogSnapshot
     typealias ExportedRecordRemover = (String) async throws -> Void
     typealias DateProvider = () -> Date
 
@@ -47,7 +44,7 @@ struct DepthAlbumItemProvider {
     ) {
         self.recordsLoader = recordsLoader
         self.photoCatalogLoader = { exportedAssetLocalIdentifiers in
-            try await photoCatalog.depthAlbumPhotoCatalogSnapshot(
+            try await photoCatalog.libraryPhotoCatalogSnapshot(
                 exportedAssetLocalIdentifiers: exportedAssetLocalIdentifiers
             )
         }
@@ -72,14 +69,14 @@ struct DepthAlbumItemProvider {
         self.missingExportedAssetGraceInterval = missingExportedAssetGraceInterval
     }
 
-    func loadSnapshot() async throws -> DepthAlbumItemSnapshot {
+    func loadSnapshot() async throws -> LibraryCatalogSnapshot {
         let records = try await recordsLoader()
         let pendingRecords = records.filter(\.isVisiblePendingItem)
         let exportedRecords = records.filter {
             $0.status == .exported && $0.assetLocalIdentifier != nil
         }
 
-        let photoCatalogSnapshot: DepthAlbumPhotoCatalogSnapshot
+        let photoCatalogSnapshot: LibraryPhotoCatalogSnapshot
         let photoAssetsError: Error?
         let reconciledExportedRecords: [TAPPendingCaptureRecord]
         do {
@@ -113,7 +110,7 @@ struct DepthAlbumItemProvider {
             )
             return (items: items, summaries: items.map(\.summary))
         }.value
-        return DepthAlbumItemSnapshot(
+        return LibraryCatalogSnapshot(
             items: reconciled.items,
             summaries: reconciled.summaries,
             photoAssetsError: photoAssetsError
@@ -157,8 +154,8 @@ struct DepthAlbumItemProvider {
 nonisolated struct TAPLibraryItem: Identifiable, Sendable {
     nonisolated enum Source: Sendable {
         case pending(TAPPendingCaptureRecord)
-        case ownedPhoto(TAPPendingCaptureRecord, DepthAlbumPhotoAsset)
-        case photos(DepthAlbumPhotoAsset)
+        case ownedPhoto(TAPPendingCaptureRecord, LibraryPhotoAsset)
+        case photos(LibraryPhotoAsset)
     }
 
     /// SwiftUI list identity for the current in-memory album snapshot.
@@ -186,7 +183,7 @@ nonisolated struct TAPLibraryItem: Identifiable, Sendable {
     }
 
     func thumbnailCacheKey(pixelLength: Int) -> String {
-        DepthAlbumThumbnailCacheKey.make(
+        LibraryThumbnailCacheKey.make(
             mediaID: mediaID,
             version: mediaVersion.posterRevision,
             pixelLength: pixelLength
@@ -227,10 +224,10 @@ nonisolated struct TAPLibraryItem: Identifiable, Sendable {
     static func merged(
         pendingRecords: [TAPPendingCaptureRecord],
         exportedRecords: [TAPPendingCaptureRecord],
-        photoAssets: [DepthAlbumPhotoAsset],
-        photoAssetsByLocalIdentifier: [String: DepthAlbumPhotoAsset] = [:]
+        photoAssets: [LibraryPhotoAsset],
+        photoAssetsByLocalIdentifier: [String: LibraryPhotoAsset] = [:]
     ) -> [TAPLibraryItem] {
-        var resolvedPhotoAssetsByID: [String: DepthAlbumPhotoAsset] = [:]
+        var resolvedPhotoAssetsByID: [String: LibraryPhotoAsset] = [:]
         resolvedPhotoAssetsByID.reserveCapacity(
             photoAssets.count + photoAssetsByLocalIdentifier.count
         )
@@ -260,7 +257,7 @@ nonisolated struct TAPLibraryItem: Identifiable, Sendable {
             // iCloud, or its change journal settles. Keep the app-owned scalar
             // identity in the canonical catalog instead of making the item
             // disappear until Photos catalog resolution succeeds.
-            let asset = resolvedPhotoAssetsByID[assetID] ?? DepthAlbumPhotoAsset(
+            let asset = resolvedPhotoAssetsByID[assetID] ?? LibraryPhotoAsset(
                 localIdentifier: assetID,
                 creationDate: record.capturedAt,
                 modificationDate: record.updatedAt,

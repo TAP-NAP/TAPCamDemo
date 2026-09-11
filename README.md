@@ -32,9 +32,12 @@ flowchart LR
     App["App\nsetup + route + App Attest"] --> Camera["CameraCapture\nplan + SingleCam + package"]
     Camera --> Queue["PendingCaptureQueue\nprivate pending queue"]
     Queue --> Photos["Photos\nvalidated export"]
-    Photos --> Media["MediaLibrary\nPhotoKit + media catalog"]
-    Queue --> Media
-    Media --> Viewer["Viewer\nLibrary + photo/video browsing"]
+    Photos --> Media["TAPLibrary/Media\nPhotoKit resources"]
+    Queue --> Catalog["TAPLibrary/Catalog\nreconcile + publish"]
+    Media --> Catalog
+    Catalog --> Grid["TAPLibrary/Grid\nTAP Library screen"]
+    Grid --> Viewer["TAPLibrary/Viewer\nphoto/video browsing"]
+    Media --> Viewer
     Viewer --> Analysis["DepthAnalysis\ndepth maps + planes + 3D"]
 ```
 
@@ -49,7 +52,7 @@ user intent
   -> PendingCaptureQueue atomic pending ingest
   -> serialized App Attest proof + final-byte validation
   -> Photos save + original-resource readback validation
-  -> Viewer library / photo and video browsing
+  -> TAPLibrary catalog / grid / photo and video browsing
   -> DepthAnalysis tools for selected depth data
 ```
 
@@ -66,15 +69,18 @@ user intent
 | `CameraCapture/Runtime` | the only `AVCaptureSession` mutation, capture requests, device writes, TAP Video recording, cached capture location | `CaptureSessionController.swift`, `CapturePipeline.swift`, `TAPVideoRecorder.swift`, `LocationProvider.swift` |
 | `CameraCapture/Output` | reviewed output profiles, packaging, shared-contract encoders/writers, final signed-export gates | `CaptureOutputProfile.swift`, `EmbeddedPhotoPackager.swift`, `TAPCaptureProvenanceWriter.swift` |
 | `CameraCapture/UI` | Viewfinder presentation and user intent; no capture-plan or proof ownership | `CameraView.swift`, `CameraViewModel.swift` |
-| `PendingCaptureQueue` | private pending storage, one serialized signing/export worker, retry, readback, cleanup | `TAPPendingCaptureStore.swift`, `TAPPendingCaptureProcessor.swift` |
-| `MediaLibrary` | PhotoKit access and cancellation, catalog reconciliation/publication, thumbnails, resource identity | `LibraryMediaStore.swift`, `DepthAlbumItemProvider.swift`, `PhotoKitLibraryMediaFetcher.swift` |
-| `Viewer` | library grid, paging/zoom, photo and video playback, Share/Delete, browsing state | `Library/DepthAlbumPickerView.swift`, `Photo/DepthAnalysisView.swift`, `Playback/TAPVideoPlaybackSession.swift` |
+| `PendingCaptureQueue` | private capture ingest/storage, one serialized signing/export worker, retry, readback, cleanup | `Storage/TAPPendingCaptureStore.swift`, `Processing/TAPPendingCaptureProcessor.swift` |
+| `TAPLibrary/Grid` | the TAP Library screen and item navigation | `TAPLibraryView.swift`, `TAPLibraryViewModel.swift` |
+| `TAPLibrary/Catalog` | merge pending and Photos records, reconcile removed exports, observe changes, publish ordered snapshots | `LibraryMediaStore.swift`, `LibraryCatalogReconciler.swift` |
+| `TAPLibrary/Media` | resource identities, originals, thumbnails, PhotoKit requests and cancellation | `LibraryMediaFetching.swift`, `PhotoKit/PhotoKitLibraryMediaFetcher.swift` |
+| `TAPLibrary/Viewer` | paging/zoom, photo and video playback, Share/Delete, browsing state | `Photo/DepthAnalysisView.swift`, `Playback/TAPVideoPlaybackSession.swift` |
 | `DepthAnalysis` | depth decoding/validation, heatmaps, planes, point clouds, registered video depth | `DepthAnalysisReader.swift`, `DepthAnalysisStageView.swift`, `Video/TAPVideoDepthPipeline.swift` |
 | `Diagnostics` | shared logging, capture timing, and bounded video performance traces | `TAPDiagnostics.swift`, `CaptureJobMetrics.swift`, `TAPVideoPerformanceTrace.swift` |
 
-Viewer composes MediaLibrary resources and DepthAnalysis tools. The data and
-depth layers do not own navigation, sharing, or deletion controls. Synthetic
-viewer fixtures live in `Viewer/Fixtures` and compile only in Debug builds.
+TAP Library is the user-facing gallery; Pending Capture Queue owns unfinished
+capture processing. Within TAPLibrary, Grid and Viewer consume Catalog and Media;
+Viewer also uses DepthAnalysis tools. Synthetic viewer fixtures live in
+`TAPLibrary/Viewer/Fixtures` and compile only in Debug builds.
 
 ## Build and validation
 

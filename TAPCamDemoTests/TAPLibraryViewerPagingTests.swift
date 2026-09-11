@@ -34,7 +34,7 @@ struct TAPLibraryViewerPagingTests {
 
     @Test func mixedPagingContextPreservesTheExistingLibraryMediaVersion() {
         let items = Self.mixedMediaItems()
-        let mixedContext = DepthAlbumDeletionContext(currentItemID: items[0].id, items: items)
+        let mixedContext = LibraryDeletionContext(currentItemID: items[0].id, items: items)
         for (item, entry) in zip(items, mixedContext.entries) {
             #expect(TAPLibraryViewerPagingEntry(entry).mediaVersion == item.summary.version)
         }
@@ -226,7 +226,7 @@ struct TAPLibraryViewerPagingTests {
 
     @Test func pagingEntriesKeepCanonicalMixedMediaNeighbors() throws {
         let items = Self.mixedMediaItems()
-        let context = DepthAlbumDeletionContext(
+        let context = LibraryDeletionContext(
             currentItemID: "capture:video-c",
             items: items
         )
@@ -265,7 +265,7 @@ struct TAPLibraryViewerPagingTests {
 
     @Test func pagingEntriesReturnTwoPagesAtTheCanonicalEnds() {
         let items = Self.mixedMediaItems()
-        let context = DepthAlbumDeletionContext(
+        let context = LibraryDeletionContext(
             currentItemID: "photos:still-a",
             items: items
         )
@@ -288,7 +288,7 @@ struct TAPLibraryViewerPagingTests {
 
     @Test func pagingEntriesExcludeRemovedItemsWithoutReorderingTheRemainder() {
         let items = Self.mixedMediaItems()
-        let context = DepthAlbumDeletionContext(
+        let context = LibraryDeletionContext(
             currentItemID: "capture:video-c",
             items: items
         )
@@ -308,7 +308,7 @@ struct TAPLibraryViewerPagingTests {
 
     @Test func pagingEntriesRejectUnknownOrRemovedCurrentItem() {
         let items = Self.mixedMediaItems()
-        let context = DepthAlbumDeletionContext(
+        let context = LibraryDeletionContext(
             currentItemID: "capture:video-c",
             items: items
         )
@@ -450,21 +450,21 @@ struct TAPLibraryViewerPagingTests {
             pendingRecords: [pendingVideo],
             exportedRecords: [],
             photoAssets: [
-                DepthAlbumPhotoAsset(
+                LibraryPhotoAsset(
                     localIdentifier: "still-e",
                     creationDate: Date(timeIntervalSince1970: 100)
                 ),
-                DepthAlbumPhotoAsset(
+                LibraryPhotoAsset(
                     localIdentifier: "video-d",
                     creationDate: Date(timeIntervalSince1970: 200),
                     isVideo: true
                 ),
-                DepthAlbumPhotoAsset(
+                LibraryPhotoAsset(
                     localIdentifier: "live-b",
                     creationDate: Date(timeIntervalSince1970: 400),
                     isLivePhoto: true
                 ),
-                DepthAlbumPhotoAsset(
+                LibraryPhotoAsset(
                     localIdentifier: "still-a",
                     creationDate: Date(timeIntervalSince1970: 500)
                 )

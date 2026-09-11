@@ -1,5 +1,5 @@
 //
-//  DepthAlbumPickerView.swift
+//  TAPLibraryView.swift
 //  TAPCamDemo
 //
 //  Created by Codex on 2026/4/27.
@@ -7,25 +7,22 @@
 
 import SwiftUI
 
-/// Browses pending TAP captures and the app-owned TAPCamDepth Photos album.
-///
-/// This keeps the camera surface clean: the lower-left camera control opens the
-/// album, and only this saved-image flow exposes selection and analysis tools.
-struct DepthAlbumPickerView: View {
+/// The TAP Library grid for photos, Live Photos, and videos; opens the selected Viewer.
+struct TAPLibraryView: View {
     @Environment(\.displayScale) private var displayScale
     @ObservedObject private var routeStore: CameraRouteStore
-    @StateObject private var viewModel: DepthAlbumPickerViewModel
+    @StateObject private var viewModel: TAPLibraryViewModel
     private let libraryStore: LibraryMediaStore
     private let mediaFetcher: any LibraryMediaFetching
     private let photoLoader: DepthAnalysisProgressivePhotoLoader?
     private let itemAccessibilityIdentifier: ((TAPLibraryItem) -> String)?
     @State private var albumScrollPosition = ScrollPosition(idType: String.self)
     @State private var openedItemID: String?
-    @State private var selectedDestination: DepthAlbumRouteAdapter.Destination?
+    @State private var selectedDestination: TAPLibraryRouteAdapter.Destination?
     @State private var isViewerPresented = false
     @State private var locallyRemovedItemIDs: Set<String> = []
-    @State private var visibleSnapshot: DepthAlbumVisibleSnapshot
-    @State private var presentedItemRevision: DepthAlbumViewerItemRevision?
+    @State private var visibleSnapshot: LibraryVisibleSnapshot
+    @State private var presentedItemRevision: LibraryViewerItemRevision?
 
     private static let columnCount = 5
     private static let gridSpacing: CGFloat = 3
@@ -57,13 +54,13 @@ struct DepthAlbumPickerView: View {
         let resolvedLibraryStore = libraryStore ?? LibraryMediaStore(observesChanges: false)
         self.libraryStore = resolvedLibraryStore
         _visibleSnapshot = State(
-            initialValue: DepthAlbumVisibleSnapshot(
+            initialValue: LibraryVisibleSnapshot(
                 items: resolvedLibraryStore.items,
                 excluding: []
             )
         )
         _viewModel = StateObject(
-            wrappedValue: DepthAlbumPickerViewModel(libraryStore: resolvedLibraryStore)
+            wrappedValue: TAPLibraryViewModel(libraryStore: resolvedLibraryStore)
         )
     }
 
@@ -80,8 +77,8 @@ struct DepthAlbumPickerView: View {
         .navigationTitle("TAP Library")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
-        .task(id: routeStore.isDepthAlbumPresented) {
-            guard routeStore.isDepthAlbumPresented else {
+        .task(id: routeStore.isLibraryPresented) {
+            guard routeStore.isLibraryPresented else {
                 return
             }
             await viewModel.loadForPresentation()
@@ -136,7 +133,7 @@ struct DepthAlbumPickerView: View {
                         .accessibilityIdentifier(itemAccessibilityIdentifier?(item) ?? "tap.library.item")
                         .id(item.id)
                         .onAppear {
-                            routeStore.recordVisibleDepthAlbumItem(item.routeAnchor)
+                            routeStore.recordVisibleLibraryItem(item.routeAnchor)
                         }
                     }
                 }
@@ -164,7 +161,7 @@ struct DepthAlbumPickerView: View {
         if let selectedDestination {
             TAPLibraryViewer(
                 destination: selectedDestination,
-                entries: DepthAlbumDeletionContext(currentItemID: selectedDestination.itemID, items: visibleItems)
+                entries: LibraryDeletionContext(currentItemID: selectedDestination.itemID, items: visibleItems)
                     .entries.map(TAPLibraryViewerPagingEntry.init),
                 mediaFetcher: mediaFetcher,
                 photoLoader: photoLoader,
@@ -180,12 +177,12 @@ struct DepthAlbumPickerView: View {
         selectedDestination = entry.destination
         recordPresentedRevision(itemID: entry.id)
         if let item = visibleItems.first(where: { $0.id == entry.id }) {
-            routeStore.openDepthAlbumItem(item.routeAnchor)
+            routeStore.openLibraryItem(item.routeAnchor)
         }
     }
 
     private func reconcilePresentedDestination(
-        previousRevisions: [DepthAlbumViewerItemRevision]
+        previousRevisions: [LibraryViewerItemRevision]
     ) {
         guard isViewerPresented,
               let selectedDestination else {
@@ -200,8 +197,8 @@ struct DepthAlbumPickerView: View {
             )
             return
         }
-        let updatedDestination = DepthAlbumRouteAdapter.destination(for: currentItem)
-        let updatedRevision = DepthAlbumViewerItemRevision(item: currentItem)
+        let updatedDestination = TAPLibraryRouteAdapter.destination(for: currentItem)
+        let updatedRevision = LibraryViewerItemRevision(item: currentItem)
         guard updatedRevision != presentedItemRevision else {
             return
         }
@@ -212,8 +209,8 @@ struct DepthAlbumPickerView: View {
     }
 
     private func moveAfterExternalRemoval(
-        selectedDestination: DepthAlbumRouteAdapter.Destination,
-        previousRevisions: [DepthAlbumViewerItemRevision]
+        selectedDestination: TAPLibraryRouteAdapter.Destination,
+        previousRevisions: [LibraryViewerItemRevision]
     ) {
         guard !visibleItems.isEmpty else {
             self.selectedDestination = nil
@@ -225,22 +222,22 @@ struct DepthAlbumPickerView: View {
             $0.destination.itemID == selectedDestination.itemID
         }) ?? 0
         let replacement = visibleItems[min(removedIndex, visibleItems.count - 1)]
-        let replacementDestination = DepthAlbumRouteAdapter.destination(for: replacement)
+        let replacementDestination = TAPLibraryRouteAdapter.destination(for: replacement)
         self.selectedDestination = replacementDestination
-        presentedItemRevision = DepthAlbumViewerItemRevision(item: replacement)
-        routeStore.openDepthAlbumItem(replacement.routeAnchor)
+        presentedItemRevision = LibraryViewerItemRevision(item: replacement)
+        routeStore.openLibraryItem(replacement.routeAnchor)
     }
 
     private func recordPresentedRevision(itemID: String) {
         presentedItemRevision = visibleItems.first(where: { $0.id == itemID })
-            .map(DepthAlbumViewerItemRevision.init(item:))
+            .map(LibraryViewerItemRevision.init(item:))
     }
 
     private func openAlbumItem(_ item: TAPLibraryItem) {
         openedItemID = item.id
-        routeStore.openDepthAlbumItem(item.routeAnchor)
-        selectedDestination = DepthAlbumRouteAdapter.destination(for: item)
-        presentedItemRevision = DepthAlbumViewerItemRevision(item: item)
+        routeStore.openLibraryItem(item.routeAnchor)
+        selectedDestination = TAPLibraryRouteAdapter.destination(for: item)
+        presentedItemRevision = LibraryViewerItemRevision(item: item)
         isViewerPresented = true
     }
 
@@ -274,7 +271,7 @@ struct DepthAlbumPickerView: View {
     }
 
     private func refreshVisibleSnapshot() {
-        visibleSnapshot = DepthAlbumVisibleSnapshot(
+        visibleSnapshot = LibraryVisibleSnapshot(
             items: libraryStore.items,
             excluding: locallyRemovedItemIDs
         )
@@ -295,12 +292,12 @@ struct DepthAlbumPickerView: View {
 
 /// Derives the large-grid filter and the two change-observation projections
 /// once per semantic Library revision (or local deletion), rather than once
-/// for every read of `DepthAlbumPickerView.body`.
+/// for every read of `TAPLibraryView.body`.
 @MainActor
-private struct DepthAlbumVisibleSnapshot {
+private struct LibraryVisibleSnapshot {
     let items: [TAPLibraryItem]
     let itemIDs: [String]
-    let revisions: [DepthAlbumViewerItemRevision]
+    let revisions: [LibraryViewerItemRevision]
 
     init(items: [TAPLibraryItem], excluding removedItemIDs: Set<String>) {
         let visibleItems = removedItemIDs.isEmpty
@@ -308,7 +305,7 @@ private struct DepthAlbumVisibleSnapshot {
             : items.filter { !removedItemIDs.contains($0.id) }
         self.items = visibleItems
         self.itemIDs = visibleItems.map(\.id)
-        self.revisions = visibleItems.map(DepthAlbumViewerItemRevision.init(item:))
+        self.revisions = visibleItems.map(LibraryViewerItemRevision.init(item:))
     }
 }
 
@@ -316,13 +313,13 @@ private struct DepthAlbumVisibleSnapshot {
 /// catches pending/owned/source transitions; `isLivePhoto` also catches the
 /// legacy case where Photos reveals the paired resource after an initial
 /// fallback catalog entry was presented as a still image.
-nonisolated private struct DepthAlbumViewerItemRevision: Equatable {
-    let destination: DepthAlbumRouteAdapter.Destination
+nonisolated private struct LibraryViewerItemRevision: Equatable {
+    let destination: TAPLibraryRouteAdapter.Destination
     let isLivePhoto: Bool
     let contentRevision: String
 
     init(item: TAPLibraryItem) {
-        destination = DepthAlbumRouteAdapter.destination(for: item)
+        destination = TAPLibraryRouteAdapter.destination(for: item)
         isLivePhoto = item.isLivePhoto
         contentRevision = item.summary.version.contentRevision
     }
