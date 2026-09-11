@@ -36,48 +36,39 @@ struct FocalLengthSelectorView: View {
     var body: some View {
         let selectorWidth = min(contentWidth, maximumVisibleWidth)
 
-        GeometryReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(options) { option in
-                        Button {
-                            select(option)
-                        } label: {
-                            CenterAnchoredChromeRotation(
-                                rotation: contentRotation,
-                                width: 48,
-                                height: 42
-                            ) {
-                                VStack(spacing: 0) {
-                                    Text(option.numericLabel)
-                                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.72)
-                                    Text(option.unitLabel)
-                                        .font(.system(size: 9, weight: .semibold, design: .rounded))
-                                        .textCase(.lowercase)
-                                }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(options) { option in
+                    Button {
+                        select(option)
+                    } label: {
+                        CenterAnchoredChromeRotation(
+                            rotation: contentRotation,
+                            width: 48,
+                            height: 42
+                        ) {
+                            VStack(spacing: 0) {
+                                Text(option.numericLabel)
+                                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.72)
+                                Text(option.unitLabel)
+                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                    .textCase(.lowercase)
                             }
-                            .background(background(for: option), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                            .foregroundStyle(foreground(for: option))
                         }
-                        .buttonStyle(.plain)
-                        .disabled(!option.isEnabled)
-                        .accessibilityLabel("Use \(option.displayName) field of view")
+                        .background(background(for: option), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .foregroundStyle(foreground(for: option))
                     }
+                    .buttonStyle(.plain)
+                    .disabled(!option.isEnabled)
+                    .accessibilityLabel("Use \(option.displayName) field of view")
                 }
-                /*
-                 A horizontal ScrollView lays out its content from the leading
-                 edge. Giving the chip row at least the visible container width
-                 keeps small option sets centered, while still allowing larger
-                 sets to scroll naturally.
-                 */
-                .padding(.horizontal, 6)
-                .frame(minWidth: proxy.size.width, minHeight: 52, alignment: .center)
             }
+            .padding(.horizontal, 6)
+            .frame(minWidth: selectorWidth, minHeight: 52, alignment: .center)
         }
-        .frame(width: selectorWidth)
-        .frame(height: 52)
+        .frame(width: selectorWidth, height: 52)
     }
 
     private var contentWidth: CGFloat {

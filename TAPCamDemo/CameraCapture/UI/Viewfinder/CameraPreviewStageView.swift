@@ -566,19 +566,16 @@ struct CameraPreviewStageView: View {
     }
 
     private var viewfinderControls: some View {
-        ZStack(alignment: .bottom) {
-            if state.shouldShowFocalLengthSelector {
-                FocalLengthSelectorView(
-                    options: state.focalLengthOptions,
-                    contentRotation: state.contentRotation,
-                    select: onSelectFocalLengthOption
-                )
-                .frame(maxWidth: .infinity, alignment: .center)
-                .transition(.opacity)
-            }
+        FocalLengthSelectorView(
+            options: state.focalLengthOptions,
+            contentRotation: state.contentRotation,
+            select: onSelectFocalLengthOption
+        )
+        .animation(.easeInOut(duration: CameraViewfinderTransitionPresentation.duration)) { content in
+            content.opacity(state.shouldShowFocalLengthSelector ? 1 : 0)
         }
-        .frame(maxWidth: .infinity, minHeight: 70, alignment: .bottom)
-        .animation(.easeInOut(duration: CameraViewfinderTransitionPresentation.duration), value: state.shouldShowFocalLengthSelector)
+        .allowsHitTesting(state.shouldShowFocalLengthSelector)
+        .accessibilityHidden(!state.shouldShowFocalLengthSelector)
     }
 
     private struct FocusIndicatorView: View {

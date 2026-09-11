@@ -146,10 +146,11 @@ struct CameraViewfinderChromeView: View {
                 contentRotation: state.contentRotation,
                 onToggle: onToggleBasicEV
             )
-            .opacity(state.shouldShowBasicEV ? 1 : 0)
+            .animation(.easeInOut(duration: 0.2)) { content in
+                content.opacity(state.shouldShowBasicEV ? 1 : 0)
+            }
             .allowsHitTesting(state.shouldShowBasicEV)
             .accessibilityHidden(!state.shouldShowBasicEV)
-            .animation(.easeInOut(duration: 0.2), value: state.shouldShowBasicEV)
 
             Spacer(minLength: Metrics.dynamicIslandClearance)
 
@@ -176,10 +177,11 @@ struct CameraViewfinderChromeView: View {
             HStack(spacing: 10) {
                 flashButton
                 livePhotoButton
-                    .opacity(state.isLivePhotoAvailable ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.2)) { content in
+                        content.opacity(state.isLivePhotoAvailable ? 1 : 0)
+                    }
                     .allowsHitTesting(state.isLivePhotoAvailable)
                     .accessibilityHidden(!state.isLivePhotoAvailable)
-                    .animation(.easeInOut(duration: 0.2), value: state.isLivePhotoAvailable)
                 Spacer(minLength: 0)
                 proModeButton
             }
@@ -205,21 +207,28 @@ struct CameraViewfinderChromeView: View {
                 width: Metrics.viewfinderButtonSize,
                 height: Metrics.viewfinderButtonSize
             ) {
-                if state.proModeState.isTransitioning {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(highlightColor)
-                } else {
+                ZStack {
                     Text("PRO")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .tracking(0.6)
                         .foregroundStyle(state.proModeState.isActive ? highlightColor : .white)
+                        .animation(.easeInOut(duration: 0.2)) { content in
+                            content.opacity(state.proModeState.isTransitioning ? 0 : 1)
+                        }
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(highlightColor)
+                        .animation(.easeInOut(duration: 0.2)) { content in
+                            content.opacity(state.proModeState.isTransitioning ? 1 : 0)
+                        }
                 }
             }
             .background(.black.opacity(0.42), in: Circle())
         }
         .buttonStyle(.plain)
-        .opacity(state.proModeState.isVisible ? 1 : 0)
+        .animation(.easeInOut(duration: 0.2)) { content in
+            content.opacity(state.proModeState.isVisible ? 1 : 0)
+        }
         .allowsHitTesting(state.proModeState.isInteractive)
         .accessibilityHidden(!state.proModeState.isVisible)
         .accessibilityLabel(
@@ -230,7 +239,6 @@ struct CameraViewfinderChromeView: View {
         )
         .accessibilityIdentifier("camera.chrome.proMode")
         .help(state.proModeState.isActive ? "Leave Pro mode." : "Use Pro camera controls.")
-        .animation(.easeInOut(duration: 0.2), value: state.proModeState)
     }
 
     private var flashButton: some View {

@@ -8,6 +8,20 @@
 import SwiftUI
 import UIKit
 
+private struct CameraShutterButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        ZStack {
+            Circle().strokeBorder(.white, lineWidth: 4)
+            configuration.label
+                .animation(.easeOut(duration: 0.1)) { content in
+                    content.scaleEffect(configuration.isPressed ? 0.96 : 1)
+                }
+        }
+        .frame(width: 78, height: 78)
+        .contentShape(Circle())
+    }
+}
+
 /// Field-level state for the visible camera controls.
 ///
 /// This value keeps the controls view out of capture, App Attest, Photos, and
@@ -88,8 +102,6 @@ struct CameraCaptureControlsView: View {
     let onEndAdjustment: (CameraAdjustmentControl) -> Void
     let exposureDeltaForAdjustment: (CameraAdjustmentControl, Double) -> Double?
     let automaticValueForAdjustment: (CameraAdjustmentControl) -> Double?
-
-    @State private var isShutterTouchActive = false
 
     var body: some View {
         VStack(spacing: 8) {
@@ -235,48 +247,24 @@ struct CameraCaptureControlsView: View {
     }
 
     private var shutterControl: some View {
-        ZStack {
-            Circle()
-                .strokeBorder(.white, lineWidth: 4)
-                .frame(width: 78, height: 78)
-
+        let scale = state.shutterDiameter / 62
+        return Button(action: onCapture) {
             RoundedRectangle(
-                cornerRadius: state.isRecordingMovie ? 6 : state.shutterDiameter / 2,
+                cornerRadius: state.isRecordingMovie ? 6 / scale : 31,
                 style: .continuous
             )
             .fill(state.shutterColor)
-            .frame(width: state.shutterDiameter, height: state.shutterDiameter)
-            .scaleEffect(isShutterTouchActive && state.isShutterEnabled ? 0.96 : 1)
-            .animation(.easeOut(duration: 0.1), value: isShutterTouchActive)
+            .frame(width: 62, height: 62)
+            .scaleEffect(scale, anchor: .center)
             .animation(.easeInOut(duration: 0.2), value: state.selectedMode)
             .animation(.easeInOut(duration: 0.2), value: state.isRecordingMovie)
         }
-        .frame(width: 78, height: 78)
-        .contentShape(Circle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    guard state.isShutterEnabled,
-                          !state.isInteractionLocked,
-                          !isShutterTouchActive else { return }
-                    isShutterTouchActive = true
-                    onCapture()
-                }
-                .onEnded { _ in
-                    isShutterTouchActive = false
-                }
-        )
-        .accessibilityElement()
+        .buttonStyle(CameraShutterButtonStyle())
         .allowsHitTesting(!state.isInteractionLocked)
         .accessibilityHidden(state.isInteractionLocked)
         .accessibilityLabel(shutterAccessibilityLabel)
         .accessibilityIdentifier("camera.capture.shutter")
-        .accessibilityAddTraits(.isButton)
-        .disabled(!state.isShutterEnabled)
-        .accessibilityAction {
-            guard state.isShutterEnabled, !state.isInteractionLocked else { return }
-            onCapture()
-        }
+        .disabled(!state.isShutterEnabled || state.isInteractionLocked)
     }
 
     private var shutterAccessibilityLabel: String {

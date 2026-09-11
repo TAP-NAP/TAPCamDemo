@@ -79,7 +79,8 @@ final class CameraChromeOrientationController: ObservableObject {
 ///
 /// The outer frame remains part of the portrait-locked layout. Only the
 /// content inside rotates, so text or icon intrinsic bounds cannot shift the
-/// apparent rotation anchor.
+/// apparent rotation anchor. The animation is scoped to rotation so child
+/// layout changes do not inherit its spring.
 struct CenterAnchoredChromeRotation<Content: View>: View {
     let rotation: Angle
     let width: CGFloat
@@ -99,12 +100,11 @@ struct CenterAnchoredChromeRotation<Content: View>: View {
     }
 
     var body: some View {
-        ZStack {
-            content
-                .rotationEffect(rotation, anchor: .center)
-                .animation(.spring(response: 0.28, dampingFraction: 0.86), value: rotation)
-        }
-        .frame(width: width, height: height, alignment: .center)
+        content
+            .frame(width: width, height: height, alignment: .center)
+            .animation(.spring(response: 0.28, dampingFraction: 0.86)) { content in
+                content.rotationEffect(rotation, anchor: .center)
+            }
     }
 }
 
