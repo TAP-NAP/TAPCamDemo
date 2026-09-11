@@ -45,7 +45,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     let photoOutput = AVCapturePhotoOutput()
     let manualFocusPreviewStream = CameraManualFocusPreviewStream()
 
-    private let sessionQueue = DispatchQueue(label: "tapcam.camera-capture.singlecam.session")
+    private let sessionQueue = DispatchQueue(label: "tapcam.camera-capture.singlecam.session", qos: .userInitiated)
     // Session-queue-owned intent survives a system interruption. Explicit
     // pause/stop clears it so interruption recovery cannot reopen the camera.
     private var shouldRunSession = false
@@ -508,7 +508,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
     }
 
-    /// Stop the sensor while browsing without dismantling a reusable graph.
+    /// Suspend the sensor for an inactive scene without dismantling a reusable graph.
     func pause() {
         sessionQueue.async { [self] in
             shouldRunSession = false
@@ -551,8 +551,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         isVideoMirrored: Bool,
         onFailure: @escaping @Sendable (Error) -> Void
     ) {
-        sessionQueue.async { [session, photoOutput] in
+        sessionQueue.async { [self, session, photoOutput] in
             do {
+                guard shouldRunSession, isSceneActive, session.isRunning, !session.isInterrupted else {
+                    throw CancellationError()
+                }
                 guard let device = session.inputs.compactMap({ $0 as? AVCaptureDeviceInput })
                     .first(where: { $0.device.hasMediaType(.video) })?.device,
                       device.uniqueID == expectedDeviceID else {
@@ -655,16 +658,40 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                     guard activeVideoRecordingGraph == nil else {
                         throw TAPDepthCaptureError.videoRecordingAlreadyActive
                     }
-                    if let preparedVideoRecordingGraph,
-                       preparedVideoRecordingGraph.matches(
+                    if var preparedGraph = preparedVideoRecordingGraph,
+                       preparedGraph.matchesOutputs(
                         configuration: configuration,
                         recordsAudio: recordsAudio,
-                        videoRotationAngle: videoRotationAngle,
                         isVideoMirrored: isVideoMirrored,
                         depthFilteringEnabled: depthFilteringEnabled,
                         isGeekModePreview: previewHandler != nil
                        ) {
-                        preparedVideoRecordingGraph.outputRouter.setPreviewHandler(previewHandler)
+                        if !PreparedVideoRecordingGraph.sameRotation(preparedGraph.videoRotationAngle, videoRotationAngle) {
+                            // Rotation configures the native render pipeline. Do
+                            // it during mode preparation, preserving the graph's
+                            // outputs, synchronizer and callback router.
+                            do {
+                                try configureVideoRecordingConnection(
+                                    preparedGraph.videoOutput,
+                                    videoRotationAngle: videoRotationAngle,
+                                    isVideoMirrored: isVideoMirrored
+                                )
+                                preparedGraph.videoRotationAngle = preparedGraph.videoOutput.connection(with: .video)?.videoRotationAngle
+                                preparedGraph.videoSettings = previewHandler == nil
+                                    ? preparedGraph.videoOutput.recommendedVideoSettingsForAssetWriter(writingTo: .mp4)
+                                        ?? Self.fallbackVideoSettings(for: configuration.device)
+                                    : [:]
+                                try restorePhotoDimensions(
+                                    configuration.resolvedOutput.maxPhotoDimensions,
+                                    device: configuration.device
+                                )
+                                preparedVideoRecordingGraph = preparedGraph
+                            } catch {
+                                discardPreparedVideoRecordingGraphLocked(session: session, reason: "rotation-preparation")
+                                throw error
+                            }
+                        }
+                        preparedGraph.outputRouter.setPreviewHandler(previewHandler)
                         continuation.resume()
                         return
                     }
@@ -740,9 +767,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             depthOutput: depthOutput,
                             audioInputAddedByRecording: addedAudioInput,
                             device: configuration.device,
+                            photoDimensions: configuration.resolvedOutput.maxPhotoDimensions,
                             recordsAudio: actualRecordsAudio,
                             requestedRecordsAudio: recordsAudio,
-                            videoRotationAngle: videoRotationAngle,
+                            videoRotationAngle: videoOutput.connection(with: .video)?.videoRotationAngle,
                             isVideoMirrored: isVideoMirrored,
                             depthFilteringEnabled: depthFilteringEnabled,
                             isGeekModePreview: previewHandler != nil,
@@ -753,16 +781,15 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             outputRouter: outputRouter,
                             usesSharedManualFocusVideoOutput: usesSharedManualFocusVideoOutput
                         )
-                        if previewHandler != nil {
-                            do {
-                                try restoreGeekModePhotoDimensions(configuration)
-                            } catch {
-                                // The graph has already committed. Teardown
-                                // owns its own balanced configuration transaction.
-                                discardPreparedVideoRecordingGraphLocked(session: session, reason: "geek-photo-dimensions")
-                                continuation.resume(throwing: error)
-                                return
-                            }
+                        do {
+                            try restorePhotoDimensions(
+                                configuration.resolvedOutput.maxPhotoDimensions,
+                                device: configuration.device
+                            )
+                        } catch {
+                            discardPreparedVideoRecordingGraphLocked(session: session, reason: "photo-dimensions")
+                            continuation.resume(throwing: error)
+                            return
                         }
                         continuation.resume()
                     } catch {
@@ -780,6 +807,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             reason: "warmup-rollback"
                         )
                         session.commitConfiguration()
+                        try restorePhotoDimensions(
+                            configuration.resolvedOutput.maxPhotoDimensions,
+                            device: configuration.device
+                        )
                         throw error
                     }
                 } catch {
@@ -789,12 +820,12 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
     }
 
-    private func restoreGeekModePhotoDimensions(_ configuration: SessionConfigurationResult) throws {
-        guard let requested = configuration.resolvedOutput.maxPhotoDimensions else { return }
-        let supported = configuration.device.activeFormat.supportedMaxPhotoDimensions.map(CapturePhotoDimensions.init)
+    private func restorePhotoDimensions(_ requested: CapturePhotoDimensions?, device: AVCaptureDevice) throws {
+        guard let requested else { return }
+        let supported = device.activeFormat.supportedMaxPhotoDimensions.map(CapturePhotoDimensions.init)
         guard requested.isValid, supported.contains(requested) else {
             throw TAPDepthCaptureError.invalidCaptureOutputProfile(
-                "The live depth preview format does not support photo dimensions \(requested.debugDescription)."
+                "The active format does not support photo dimensions \(requested.debugDescription)."
             )
         }
         // Installing synchronized RGB/depth outputs can reset the photo output
@@ -822,33 +853,50 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     }
 
     func startVideoRecording(
-        request: TAPVideoRecordingRequest,
+        captureID: String,
+        capturedAt: Date,
+        outputURL: URL,
         configuration: SessionConfigurationResult,
+        expectedVideoRotationAngle: CGFloat?,
         location: TAPPendingCaptureLocation?
     ) async throws -> TAPVideoRecorder {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [self, session] in
                 do {
+                    guard shouldRunSession, isSceneActive, session.isRunning, !session.isInterrupted else {
+                        throw CancellationError()
+                    }
                     guard activeVideoRecordingGraph == nil else {
                         throw TAPDepthCaptureError.videoRecordingAlreadyActive
                     }
 
                     guard let preparedGraph = preparedVideoRecordingGraph,
-                          preparedGraph.matches(
+                          preparedGraph.matchesOutputs(
                             configuration: configuration,
-                            recordsAudio: request.recordsAudio,
-                            videoRotationAngle: request.videoRotationAngle,
-                            isVideoMirrored: request.isVideoMirrored,
-                            depthFilteringEnabled: request.depthFilteringEnabled
+                            recordsAudio: preparedGraph.requestedRecordsAudio,
+                            isVideoMirrored: preparedGraph.isVideoMirrored,
+                            depthFilteringEnabled: preparedGraph.depthFilteringEnabled
                           ) else {
-                        discardPreparedVideoRecordingGraphLocked(
-                            session: session,
-                            reason: "start-mismatch"
-                        )
                         throw TAPDepthCaptureError.videoRecordingFailed(
                             "Video graph must be prepared before recording"
                         )
                     }
+                    guard PreparedVideoRecordingGraph.sameRotation(
+                        preparedGraph.videoRotationAngle, expectedVideoRotationAngle
+                    ) else {
+                        throw TAPDepthCaptureError.videoRecordingFailed(
+                            "Video orientation must be prepared before recording"
+                        )
+                    }
+                    let request = TAPVideoRecordingRequest(
+                        captureID: captureID,
+                        capturedAt: capturedAt,
+                        outputURL: outputURL,
+                        videoRotationAngle: preparedGraph.videoRotationAngle,
+                        isVideoMirrored: preparedGraph.isVideoMirrored,
+                        recordsAudio: preparedGraph.requestedRecordsAudio,
+                        depthFilteringEnabled: preparedGraph.depthFilteringEnabled
+                    )
                     let recorder = try TAPVideoRecorder(
                         request: request,
                         sessionConfiguration: configuration,
@@ -882,11 +930,12 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
     }
 
-    func isVideoRecordingPrepared() async -> Bool {
+    func isVideoRecordingPrepared(videoRotationAngle: CGFloat?) async -> Bool {
         await withCheckedContinuation { continuation in
             sessionQueue.async { [self] in
                 continuation.resume(returning: preparedVideoRecordingGraph?.isGeekModePreview == false
-                    && shouldRunSession && isSceneActive && session.isRunning && !session.isInterrupted)
+                    && shouldRunSession && isSceneActive && session.isRunning && !session.isInterrupted
+                    && PreparedVideoRecordingGraph.sameRotation(preparedVideoRecordingGraph?.videoRotationAngle, videoRotationAngle))
             }
         }
     }
@@ -900,7 +949,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     ) async -> Bool {
         await withCheckedContinuation { continuation in
             sessionQueue.async { [self] in
-                continuation.resume(returning: preparedVideoRecordingGraph?.matches(
+                continuation.resume(returning: shouldRunSession && isSceneActive
+                    && session.isRunning && !session.isInterrupted
+                    && preparedVideoRecordingGraph?.matches(
                     configuration: configuration, recordsAudio: recordsAudio,
                     videoRotationAngle: videoRotationAngle, isVideoMirrored: isVideoMirrored,
                     depthFilteringEnabled: depthFilteringEnabled
@@ -1547,20 +1598,11 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             addedOutputs.append(videoOutput)
         }
 
-        if let connection = videoOutput.connection(with: .video) {
-            connection.preferredVideoStabilizationMode = .off
-            if connection.isVideoMirroringSupported {
-                connection.automaticallyAdjustsVideoMirroring = false
-                connection.isVideoMirrored = isVideoMirrored
-            }
-            if let videoRotationAngle,
-               connection.isVideoRotationAngleSupported(videoRotationAngle) {
-                connection.videoRotationAngle = videoRotationAngle
-            }
-            if usesSharedManualFocusVideoOutput {
-                manualFocusPreviewStream.setSharedOutputRotationAngle(connection.videoRotationAngle)
-            }
-        }
+        try configureVideoRecordingConnection(
+            videoOutput,
+            videoRotationAngle: videoRotationAngle,
+            isVideoMirrored: isVideoMirrored
+        )
 
         var actualRecordsAudio = false
         if let audioOutput {
@@ -1592,6 +1634,30 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             throw TAPDepthCaptureError.unableToAddDepthOutput
         }
         return actualRecordsAudio
+    }
+
+    private func configureVideoRecordingConnection(
+        _ videoOutput: AVCaptureVideoDataOutput,
+        videoRotationAngle: CGFloat?,
+        isVideoMirrored: Bool
+    ) throws {
+        guard let connection = videoOutput.connection(with: .video) else {
+            throw TAPDepthCaptureError.unableToAddVideoOutput
+        }
+        connection.preferredVideoStabilizationMode = .off
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = isVideoMirrored
+        }
+        if let videoRotationAngle {
+            guard connection.isVideoRotationAngleSupported(videoRotationAngle) else {
+                throw TAPDepthCaptureError.incompatibleRGBDepthPairing
+            }
+            connection.videoRotationAngle = videoRotationAngle
+        }
+        if videoOutput === manualFocusPreviewStream.videoOutput {
+            manualFocusPreviewStream.setSharedOutputRotationAngle(connection.videoRotationAngle)
+        }
     }
 
     /// Registration descriptors use an unrotated, unmirrored depth grid and
@@ -1705,6 +1771,13 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             reason: reason
         )
         session.commitConfiguration()
+        do {
+            try restorePhotoDimensions(graph.photoDimensions, device: graph.device)
+        } catch {
+            #if DEBUG
+            TAPDiagnostics.cameraCapture.error("photo output restore failed after video graph teardown")
+            #endif
+        }
     }
 
     private static func fallbackVideoSettings(for device: AVCaptureDevice) -> [String: Any] {
@@ -2093,13 +2166,14 @@ private nonisolated struct PreparedVideoRecordingGraph {
     let depthOutput: AVCaptureDepthDataOutput
     let audioInputAddedByRecording: AVCaptureDeviceInput?
     let device: AVCaptureDevice
+    let photoDimensions: CapturePhotoDimensions?
     let recordsAudio: Bool
     let requestedRecordsAudio: Bool
-    let videoRotationAngle: CGFloat?
+    var videoRotationAngle: CGFloat?
     let isVideoMirrored: Bool
     let depthFilteringEnabled: Bool
     let isGeekModePreview: Bool
-    let videoSettings: [String: Any]
+    var videoSettings: [String: Any]
     let previousActiveDepthDataFormat: AVCaptureDevice.Format?
     let didApplyVideoDepthDataFormat: Bool
     let dataOutputSynchronizer: AVCaptureDataOutputSynchronizer
@@ -2114,15 +2188,29 @@ private nonisolated struct PreparedVideoRecordingGraph {
         depthFilteringEnabled: Bool,
         isGeekModePreview: Bool = false
     ) -> Bool {
+        matchesOutputs(
+            configuration: configuration, recordsAudio: recordsAudio,
+            isVideoMirrored: isVideoMirrored, depthFilteringEnabled: depthFilteringEnabled,
+            isGeekModePreview: isGeekModePreview
+        ) && Self.sameRotation(self.videoRotationAngle, videoRotationAngle)
+    }
+
+    func matchesOutputs(
+        configuration: SessionConfigurationResult,
+        recordsAudio: Bool,
+        isVideoMirrored: Bool,
+        depthFilteringEnabled: Bool,
+        isGeekModePreview: Bool = false
+    ) -> Bool {
         device.uniqueID == configuration.device.uniqueID
+            && photoDimensions == configuration.resolvedOutput.maxPhotoDimensions
             && requestedRecordsAudio == recordsAudio
             && self.isVideoMirrored == isVideoMirrored
             && self.depthFilteringEnabled == depthFilteringEnabled
             && self.isGeekModePreview == isGeekModePreview
-            && Self.sameRotation(self.videoRotationAngle, videoRotationAngle)
     }
 
-    private static func sameRotation(_ lhs: CGFloat?, _ rhs: CGFloat?) -> Bool {
+    static func sameRotation(_ lhs: CGFloat?, _ rhs: CGFloat?) -> Bool {
         switch (lhs, rhs) {
         case (.none, .none):
             return true

@@ -51,6 +51,7 @@ struct CameraView: View {
     @State private var resourceInitializationMarkerCommitTask: Task<Void, Never>?
     @State private var didPublishViewfinderInteractive = false
     @State private var viewfinderInteractivePublicationTask: Task<Void, Never>?
+    @State private var sceneSuspensionGeneration = 0
     #if DEBUG
     @State private var resourceInitializationDiagnosticTask: Task<Void, Never>?
     #endif
@@ -272,9 +273,16 @@ struct CameraView: View {
             chromeOrientation: chromeOrientation,
             appAttestController: appAttestController,
             isSettingsPresented: isShowingSettings,
-            resumesVideoModeAfterLibrary: selectedMode == .video,
+            resumesVideoModeAfterLibrary: { selectedMode == .video },
             onLibraryReturnCompleted: handleLibraryReturnCompleted
         )
+        .task(id: didPublishViewfinderInteractive) {
+            guard didPublishViewfinderInteractive else { return }
+            await lifecycleCoordinator.warmPendingCaptureSigningCredentialAndRetryIfNeeded(
+                viewModel: viewModel,
+                appAttestController: appAttestController
+            )
+        }
         .overlay {
             if initialReadinessState.blocksInteraction {
                 CameraInitialReadinessOverlayView(
@@ -294,8 +302,9 @@ struct CameraView: View {
             applyPendingIntentHandoff()
         }
         .onDisappear {
-            lifecycleCoordinator.cancelCaptureModeChange()
             persistRememberedViewfinderControlStateIfNeeded()
+            sceneSuspensionGeneration &+= 1
+            lifecycleCoordinator.cancelCaptureModeChange()
             isBasicEVStripVisible = false
             activeAdjustmentControl = nil
             manualFocusModeEntryToken = nil
@@ -364,8 +373,11 @@ struct CameraView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            sceneSuspensionGeneration &+= 1
+            let suspensionGeneration = sceneSuspensionGeneration
             viewModel.sessionController.setSceneActive(phase == .active)
             if phase != .active {
+                viewModel.cancelPendingVideoStartForLifecycle()
                 cameraPathPreviewWatchdogTask?.cancel()
                 cameraPathPreviewWatchdogTask = nil
                 resourceInitializationMarkerCommitTask?.cancel()
@@ -386,12 +398,16 @@ struct CameraView: View {
                 manualFocusModeEntryToken = nil
                 viewModel.cancelManualFocusRuntime()
                 Task {
+                    guard suspensionGeneration == sceneSuspensionGeneration else { return }
                     if shouldRestoreAutoFocus {
                         await viewModel.restoreAutoFocus()
                     }
+                    guard suspensionGeneration == sceneSuspensionGeneration else { return }
                     await viewModel.stopActiveVideoRecordingForLifecycleIfNeeded(
                         pendingCaptureWorkerClient: appAttestController.runtime.client
                     )
+                    guard suspensionGeneration == sceneSuspensionGeneration else { return }
+                    viewModel.pauseForInactiveScene()
                 }
             } else {
                 hapticFeedbackController.prepareForCameraInteraction()
@@ -407,16 +423,22 @@ struct CameraView: View {
             if state == .needsPreparation {
                 prepareSelectedVideoModeIfNeeded()
             }
+            releaseCameraPathTransitionIfPreviewResumed()
         }
         .onChange(of: lifecycleCoordinator.isChangingCaptureMode) { _, isChanging in
             if !isChanging {
                 prepareSelectedVideoModeIfNeeded()
+                releaseCameraPathTransitionIfPreviewResumed()
             }
         }
     }
 
     private var cameraControlObservers: some View {
         cameraPreferenceAndSceneObservers
+        .onChange(of: viewModel.captureFailureID) { _, failureID in
+            guard failureID != nil else { return }
+            showViewfinderHint("Capture failed. Please try again.")
+        }
         .onChange(of: viewModel.latestCaptureDepthHint) { _, hint in
             guard let hint else {
                 return
@@ -466,6 +488,7 @@ struct CameraView: View {
         }
         .onChange(of: viewModel.isConfiguringSession) { _, _ in
             evaluateStartupReadiness()
+            releaseCameraPathTransitionIfPreviewResumed()
         }
         .onChange(of: viewModel.activeSessionConfiguration != nil) { _, _ in
             evaluateStartupReadiness()
@@ -1060,23 +1083,40 @@ struct CameraView: View {
 
     private func prepareSelectedVideoModeIfNeeded() {
         guard scenePhase == .active, selectedMode == .video,
-              !viewModel.isPausedForAnalysis,
-              !isCameraPathTransitioning, !viewModel.isConfiguringSession,
+              !viewModel.isVideoRecording, !viewModel.isCapturingPhoto,
+              !viewModel.isCameraSuspended,
+              !isCameraPathTransitioning || cameraPathTransitionRuntimeCompleted,
+              !viewModel.isConfiguringSession,
               viewModel.videoPreparationState == .idle || viewModel.videoPreparationState == .needsPreparation else {
             return
         }
-        lifecycleCoordinator.prepareCaptureMode(
+        let token = cameraPathTransitionToken ?? UUID()
+        guard lifecycleCoordinator.prepareCaptureMode(
             to: .video,
             prepareVideoMode: prepareVideoModeForCurrentSelection,
-            restorePhotoMode: {}
-        )
+            restorePhotoMode: {},
+            settled: {
+                guard cameraPathTransitionToken == token else { return }
+                if !Task.isCancelled && scenePhase == .active && !viewModel.isCameraSuspended {
+                    completeCameraPathRuntimeTransition(token: token)
+                    prepareSelectedVideoModeIfNeeded()
+                } else {
+                    cancelCameraPathTransitionPresentation()
+                }
+            }
+        ) != nil else { return }
+        if cameraPathTransitionToken == nil {
+            beginCameraPathTransition(.switchingCaptureMode, token: token)
+        } else {
+            cameraPathTransitionRuntimeCompleted = false
+        }
     }
 
     private func prepareVideoModeForCurrentSelection() async -> Bool {
         let generation = viewModel.configurationGeneration
         let ready = await viewModel.prepareVideoModeIfNeeded()
         guard !Task.isCancelled, generation == viewModel.configurationGeneration,
-              scenePhase == .active, !viewModel.isPausedForAnalysis,
+              scenePhase == .active, !viewModel.isCameraSuspended,
               selectedMode == .video else { return false }
         if !ready {
             selectedMode = .photo
@@ -1087,6 +1127,7 @@ struct CameraView: View {
 
     private func selectCaptureMode(_ mode: CameraCaptureModeOption) {
         guard mode != selectedMode,
+              !viewModel.isCapturingPhoto,
               !isCameraPathTransitioning, !viewModel.isConfiguringSession else {
             return
         }
@@ -1101,7 +1142,7 @@ struct CameraView: View {
             restorePhotoMode: { await viewModel.teardownPreparedVideoModeIfNeeded() },
             settled: {
                 guard cameraPathTransitionToken == transitionToken else { return }
-                if scenePhase == .active && !viewModel.isPausedForAnalysis {
+                if scenePhase == .active && !viewModel.isCameraSuspended {
                     completeCameraPathRuntimeTransition()
                 } else {
                     cancelCameraPathTransitionPresentation()
@@ -1170,6 +1211,9 @@ struct CameraView: View {
                 if case .failed(_, let reason) = viewModel.photographerModeState {
                     showViewfinderHint(reason.message)
                 }
+                if selectedMode == .video, viewModel.activeSessionConfiguration != nil {
+                    _ = await prepareVideoModeForCurrentSelection()
+                }
                 return
             }
 
@@ -1204,7 +1248,7 @@ struct CameraView: View {
             activeAdjustmentControl = nil
             focusMode = .auto
         case .failed(let recoveredMode, let reason):
-            if recoveredMode != .unconfigured {
+            if recoveredMode != .unconfigured, selectedMode != .video {
                 completeCameraPathRuntimeTransition()
             }
             if recoveredMode == .photographer {
@@ -1998,6 +2042,7 @@ struct CameraView: View {
     #endif
 
     private func selectFocalLengthDisplayOption(_ option: CameraFocalLengthDisplayOption) {
+        guard !viewModel.isCapturingPhoto else { return }
         guard (!option.isSelected || viewModel.activeSessionConfiguration == nil),
               !isCameraPathTransitioning,
               !lifecycleCoordinator.isChangingCaptureMode,
@@ -2016,11 +2061,11 @@ struct CameraView: View {
                 beginCameraPathTransition(.switchingFocalLength, token: transitionToken)
             }
             guard viewModel.configurationGeneration == expectedGeneration else { return }
-            if scenePhase == .active, !viewModel.isPausedForAnalysis {
+            if scenePhase == .active, !viewModel.isCameraSuspended {
                 if selectedMode == .video, viewModel.activeSessionConfiguration != nil {
                     _ = await prepareVideoModeForCurrentSelection()
                     guard viewModel.configurationGeneration == expectedGeneration else { return }
-                    guard scenePhase == .active, !viewModel.isPausedForAnalysis else {
+                    guard scenePhase == .active, !viewModel.isCameraSuspended else {
                         if cameraPathTransitionToken == transitionToken {
                             cancelCameraPathTransitionPresentation()
                         }
@@ -2048,26 +2093,27 @@ struct CameraView: View {
             return
         }
 
-        performShutterHaptic()
         let pendingCaptureWorkerClient = appAttestController.runtime.client
-        Task {
-            switch selectedMode {
-            case .photo:
-                await viewModel.capture(
-                    pendingCaptureWorkerClient: pendingCaptureWorkerClient,
-                    suppressesShutterSound: CameraFeedbackPreferences.shouldSuppressShutterSound(
-                        storedIsEnabled: isShutterSoundEnabled,
-                        suppressionSupported: viewModel.isShutterSoundSuppressionSupported
-                    ),
-                    flashMode: flashMode.captureFlashMode,
-                    livePhotoRequest: CaptureLivePhotoRequest(
-                        isEnabled: isLivePhotoEnabled && viewModel.isLivePhotoCaptureSupported,
-                        capturesAudio: shouldCaptureLivePhotoAudio
-                    )
+        switch selectedMode {
+        case .photo:
+            let accepted = viewModel.capture(
+                pendingCaptureWorkerClient: pendingCaptureWorkerClient,
+                suppressesShutterSound: CameraFeedbackPreferences.shouldSuppressShutterSound(
+                    storedIsEnabled: isShutterSoundEnabled,
+                    suppressionSupported: viewModel.isShutterSoundSuppressionSupported
+                ),
+                flashMode: flashMode.captureFlashMode,
+                livePhotoRequest: CaptureLivePhotoRequest(
+                    isEnabled: isLivePhotoEnabled && viewModel.isLivePhotoCaptureSupported,
+                    capturesAudio: shouldCaptureLivePhotoAudio
                 )
-            case .video:
+            )
+            if accepted { performShutterHaptic() }
+        case .video:
+            Task {
                 await viewModel.toggleVideoRecording(
-                    pendingCaptureWorkerClient: pendingCaptureWorkerClient
+                    pendingCaptureWorkerClient: pendingCaptureWorkerClient,
+                    onAccepted: performShutterHaptic
                 )
             }
         }
@@ -2103,15 +2149,7 @@ struct CameraView: View {
 
         isBasicEVStripVisible = false
         activeAdjustmentControl = nil
-        focusMode = .auto
-        manualFocusAssistToken = nil
-        manualFocusModeEntryToken = nil
-        manualFocusDraftRevision &+= 1
         focusLoupePulseID = nil
-
-        lifecycleCoordinator.cancelCaptureModeChange()
-        beginCameraPathTransition(.resumingPreview)
-        viewModel.pauseForAnalysis()
         routeStore.presentLibrary()
     }
 
@@ -2136,7 +2174,7 @@ struct CameraView: View {
     }
 
     private func switchCameraPosition() {
-        guard !isCameraPathTransitioning,
+        guard !viewModel.isCapturingPhoto, !isCameraPathTransitioning,
               !viewModel.isConfiguringSession,
               !lifecycleCoordinator.isChangingCaptureMode,
               !viewModel.isVideoRecording,
@@ -2214,7 +2252,7 @@ struct CameraView: View {
     private func completeCameraPathRuntimeTransition(token: UUID? = nil) {
         if let token, cameraPathTransitionToken != token { return }
         guard cameraPathTransitionPresentation.isPresented,
-              !viewModel.isPausedForAnalysis else {
+              !viewModel.isCameraSuspended else {
             return
         }
         let needsPostRuntimePreviewConfirmation = !cameraPathTransitionRuntimeCompleted
@@ -2273,8 +2311,11 @@ struct CameraView: View {
     }
 
     private func releaseCameraPathTransitionIfPreviewResumed() {
+        guard !viewModel.isConfiguringSession,
+              !lifecycleCoordinator.isChangingCaptureMode,
+              selectedMode != .video || viewModel.videoPreparationState == .ready || viewModel.isVideoRecording else { return }
         guard scenePhase == .active,
-              !viewModel.isPausedForAnalysis,
+              !viewModel.isCameraSuspended,
               cameraPathTransitionToken != nil,
               cameraPathTransitionRuntimeCompleted,
               isPreviewLayerPreviewing,

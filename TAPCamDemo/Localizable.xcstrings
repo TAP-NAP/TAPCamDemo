@@ -1,6 +1,17 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Capture failed. Please try again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄失败，请重试。"
+          }
+        }
+      }
+    },
     "%.3f seconds, %d RGB points" : {
       "extractionState" : "manual",
       "localizations" : {

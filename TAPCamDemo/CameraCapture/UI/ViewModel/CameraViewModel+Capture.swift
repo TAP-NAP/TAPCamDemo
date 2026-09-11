@@ -16,15 +16,19 @@ import UIKit
 /// writes it in the background, and the preview stays attached to the session.
 @MainActor
 extension CameraViewModel {
+    @discardableResult
     func capture(
         pendingCaptureWorkerClient: (any AppAttestClient)? = nil,
         suppressesShutterSound: Bool = false,
         flashMode: CaptureFlashMode = .auto,
         livePhotoRequest: CaptureLivePhotoRequest = .disabled
-    ) async {
-        guard !isPausedForAnalysis else {
-            statusMessage = "Camera paused for analysis."
-            return
+    ) -> Bool {
+        guard !isCapturingPhoto, !isConfiguringSession,
+              !photographerModeState.isTransitioning, !isPreparingVideoMode,
+              !isVideoRecording else { return false }
+        guard !isCameraSuspended else {
+            statusMessage = "Camera paused."
+            return false
         }
 
         guard let activeSessionConfiguration else {
@@ -32,7 +36,7 @@ extension CameraViewModel {
                 for: TAPDepthCaptureError.depthDeliveryUnsupported,
                 context: .capture
             )
-            return
+            return false
         }
 
         let captureConfiguration = PreCaptureConfigurationBuilder.configuration(
@@ -45,7 +49,7 @@ extension CameraViewModel {
                 for: TAPDepthCaptureError.incompatibleRGBDepthPairing,
                 context: .capture
             )
-            return
+            return false
         }
 
         guard pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs else {
@@ -53,70 +57,82 @@ extension CameraViewModel {
                 for: TAPDepthCaptureError.captureBackpressureLimitReached,
                 context: .capture
             )
-            return
+            return false
         }
 
         let queueEnteredAt = Date()
         let job = CaptureJob()
+        isCapturingPhoto = true
 
-        do {
-            let pendingCount = try await jobQueue.beginJob()
-            pendingJobCount = pendingCount
-            statusMessage = "Capture queued..."
+        Task { [pipeline, jobQueue, metricsStore] in
+            do {
+                let pendingCount = try await jobQueue.beginJob()
+                pendingJobCount = pendingCount
+                statusMessage = "Capture queued..."
 
-            let usesLocationData = CameraCaptureDataUsePreferences.usesLocationData()
-            let location = usesLocationData ? locationProvider.cachedCaptureLocation() : nil
-            if usesLocationData {
-                locationProvider.warmLocationCache()
-            }
-            let context = CaptureSourceContext(
-                sessionConfiguration: captureConfiguration,
-                capturedAt: job.createdAt,
-                location: location,
-                suppressesShutterSound: suppressesShutterSound,
-                flashMode: flashMode,
-                livePhotoRequest: livePhotoRequest
-            )
-            let queueWaitDuration = Date().timeIntervalSince(queueEnteredAt)
-            Task { [pipeline, jobQueue, metricsStore] in
+                let usesLocationData = CameraCaptureDataUsePreferences.usesLocationData()
+                let location = usesLocationData ? locationProvider.cachedCaptureLocation() : nil
+                if usesLocationData {
+                    locationProvider.warmLocationCache()
+                }
+                let context = CaptureSourceContext(
+                    sessionConfiguration: captureConfiguration,
+                    capturedAt: job.createdAt,
+                    location: location,
+                    suppressesShutterSound: suppressesShutterSound,
+                    flashMode: flashMode,
+                    livePhotoRequest: livePhotoRequest
+                )
+                let queueWaitDuration = Date().timeIntervalSince(queueEnteredAt)
                 let result = await pipeline.runSingleCamJob(
                     job: job,
                     context: context,
-                    queueWaitDuration: queueWaitDuration
+                    queueWaitDuration: queueWaitDuration,
+                    onPhotoCaptureFinished: { self.finishPhotoCapture() }
                 )
                 let remaining = await jobQueue.finishJob()
                 let metrics = await metricsStore.recent()
 
-                await MainActor.run {
-                    self.pendingJobCount = remaining
-                    self.recentMetrics = metrics
-                    switch result {
-                    case .success(let writeResult):
-                        self.statusMessage = writeResult.signatureStatus.captureStatusMessage
-                        if let hint = writeResult.depthAvailability.viewfinderHint {
-                            self.latestCaptureDepthHint = CameraCaptureDepthHint(message: hint)
-                        }
-                        self.scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
-                        if let pendingCaptureWorkerClient {
-                            Task {
-                                await self.retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
-                            }
-                        }
-                    case .failure(let error):
-                        #if DEBUG
-                        TAPDiagnostics.pendingCapture.error("capture pipeline failed jobID=\(job.id.uuidString, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
-                        #endif
-                        self.statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
+                self.pendingJobCount = remaining
+                self.recentMetrics = metrics
+                switch result {
+                case .success(let writeResult):
+                    self.statusMessage = writeResult.signatureStatus.captureStatusMessage
+                    if let hint = writeResult.depthAvailability.viewfinderHint {
+                        self.latestCaptureDepthHint = CameraCaptureDepthHint(message: hint)
                     }
+                    self.scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
+                    if let pendingCaptureWorkerClient {
+                        Task {
+                            await self.retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
+                        }
+                    }
+                case .failure(let error):
+                    #if DEBUG
+                    TAPDiagnostics.pendingCapture.error("capture pipeline failed jobID=\(job.id.uuidString, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                    #endif
+                    self.reportCaptureFailure(error)
                 }
+            } catch {
+                #if DEBUG
+                TAPDiagnostics.pendingCapture.error("capture queue failed jobID=\(job.id.uuidString, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                #endif
+                finishPhotoCapture()
+                reportCaptureFailure(error)
+                pendingJobCount = await jobQueue.pendingCount()
             }
-        } catch {
-            #if DEBUG
-            TAPDiagnostics.pendingCapture.error("capture queue failed jobID=\(job.id.uuidString, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
-            #endif
-            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
-            pendingJobCount = await jobQueue.pendingCount()
         }
+        return true
+    }
+
+    private func finishPhotoCapture() {
+        isCapturingPhoto = false
+        schedulePendingSelectionReconfigurationIfNeeded()
+    }
+
+    func reportCaptureFailure(_ error: Error) {
+        statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
+        captureFailureID = UUID()
     }
 
     /// Loads the latest TAP Library thumbnail without prompting for Photos

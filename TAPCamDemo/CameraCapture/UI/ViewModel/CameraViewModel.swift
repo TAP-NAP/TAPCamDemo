@@ -29,10 +29,12 @@ final class CameraViewModel: ObservableObject {
     @Published var activeCameraDisplayName = "Preparing camera..."
     @Published var statusMessage = "Preparing capture session..."
     @Published var pendingJobCount = 0
+    @Published var isCapturingPhoto = false
+    @Published var captureFailureID: UUID?
     @Published var recentMetrics: [CaptureJobMetrics] = []
     @Published var isDepthCaptureReady = false
     @Published var isConfiguringSession = false
-    @Published var isPausedForAnalysis = false
+    @Published var isCameraSuspended = false
     @Published var nativePreviewAspectRatio = 3.0 / 4.0
     @Published var previewCropRectNormalized = CropRectNormalized.fullFrame
     @Published var recentLibraryPresentation: RecentLibraryPresentation = .unresolved
@@ -42,6 +44,7 @@ final class CameraViewModel: ObservableObject {
     @Published var isVideoRecording = false
     @Published var videoRecordingStartedAt: Date?
     @Published var videoPreparationState = CameraVideoPreparationState.idle
+    @Published var videoCaptureRotationAngle: CGFloat?
     @Published var photographerModeState: PhotographerModeState
     @Published var suspendedRearModeIntent: PhotographerRearModeIntent = .standard
     @Published private(set) var isSessionControllerSuspectedWedged = false
@@ -68,7 +71,11 @@ final class CameraViewModel: ObservableObject {
     let libraryMediaFetcher: any LibraryMediaFetching
     let videoPosterGenerator: any LibraryVideoPosterGenerating
     let pipeline: CapturePipeline
-    var activeSessionConfiguration: SessionConfigurationResult?
+    var activeSessionConfiguration: SessionConfigurationResult? {
+        didSet { observeVideoCaptureRotation() }
+    }
+    var videoCaptureRotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    var videoCaptureRotationObservation: NSKeyValueObservation?
     var configurationGeneration = 0
     var videoPreparationTask: Task<Bool, Never>?
     var depthSelectionMode: DepthSelectionMode = .automatic
@@ -120,7 +127,11 @@ final class CameraViewModel: ObservableObject {
     }
 
     var canCapture: Bool {
-        !isPausedForAnalysis
+        !isCameraSuspended
+            && !isCapturingPhoto
+            && !isConfiguringSession
+            && !photographerModeState.isTransitioning
+            && !isVideoRecording
             && !isPreparingVideoMode
             && isDepthCaptureReady
             && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs
@@ -131,21 +142,22 @@ final class CameraViewModel: ObservableObject {
     var canUseVideoShutter: Bool {
         isVideoRecording
             || (videoPreparationState == .ready
-                && !isPausedForAnalysis
+                && !isCameraSuspended
                 && activeSessionConfiguration?.depthDeliverySupported == true
                 && pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs)
     }
 
     var isCaptureWriteInProgress: Bool {
-        pendingJobCount > 0
+        isCapturingPhoto || pendingJobCount > 0
     }
 
     var isBusyForNonCaptureStartupWork: Bool {
         isConfiguringSession
+            || isCapturingPhoto
             || photographerModeState.isTransitioning
             || isVideoRecording
             || isPreparingVideoMode
-            || isPausedForAnalysis
+            || isCameraSuspended
     }
 
     var shouldShowFocalLengthSelector: Bool {
@@ -169,6 +181,7 @@ final class CameraViewModel: ObservableObject {
 
     var canTogglePhotographerMode: Bool {
         photographerModeAvailability.isAvailable
+            && !isCapturingPhoto
             && isRearCameraActive
             && !isConfiguringSession
             && !isSessionControllerSuspectedWedged
@@ -176,7 +189,7 @@ final class CameraViewModel: ObservableObject {
             && !photographerModeState.requiresStandardRecovery
             && !isVideoRecording
             && !isPreparingVideoMode
-            && !isPausedForAnalysis
+            && !isCameraSuspended
     }
 
     var canRetryUnconfiguredCameraRecovery: Bool {
@@ -184,7 +197,7 @@ final class CameraViewModel: ObservableObject {
             && !isConfiguringSession
             && !hasPendingSelectionReconfiguration
             && !isSessionControllerSuspectedWedged
-            && !isPausedForAnalysis
+            && !isCameraSuspended
     }
 
     /// The FOV chip that should look active in the release selector.
@@ -426,7 +439,11 @@ final class CameraViewModel: ObservableObject {
     func start() async {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            await configureDefaultSelection()
+            if isCameraSuspended {
+                await resumeIfPaused()
+            } else if activeSessionConfiguration == nil, !isConfiguringSession {
+                await configureDefaultSelection()
+            }
             if CameraCaptureDataUsePreferences.usesLocationData() {
                 locationProvider.warmLocationCache()
             }
@@ -464,13 +481,14 @@ final class CameraViewModel: ObservableObject {
         invalidateVideoPreparation()
         isConfiguringSession = false
         reconcileInterruptedPhotographerModeTransition()
-        isPausedForAnalysis = false
+        isCameraSuspended = false
         isDepthCaptureReady = false
         activeSessionConfiguration = nil
         sessionController.stop()
     }
 
-    func pauseForAnalysis() {
+    func pauseForInactiveScene() {
+        guard !isCameraSuspended else { return }
         let retainsConfiguration = !isConfiguringSession
             && !photographerModeState.isTransitioning
             && !hasPendingSelectionReconfiguration
@@ -482,14 +500,19 @@ final class CameraViewModel: ObservableObject {
         recentLibraryCoverTask?.cancel()
         recentLibraryCoverTask = nil
         recentLibraryFetchGeneration &+= 1
-        configurationGeneration += 1
-        invalidateVideoPreparation()
-        isConfiguringSession = false
-        reconcileInterruptedPhotographerModeTransition()
-        isPausedForAnalysis = true
+        // A foreground destination does not call this. Scene suspension retains
+        // a stable graph and its prepared video resources; only unfinished work
+        // loses the right to publish after the interruption.
+        if !retainsConfiguration || isPreparingVideoMode {
+            configurationGeneration += 1
+            invalidateVideoPreparation()
+            isConfiguringSession = false
+            reconcileInterruptedPhotographerModeTransition()
+        }
+        isCameraSuspended = true
         isDepthCaptureReady = false
         if !retainsConfiguration { activeSessionConfiguration = nil }
-        statusMessage = "Camera paused for analysis."
+        statusMessage = "Camera paused."
         sessionController.pause()
     }
 
@@ -507,8 +530,8 @@ final class CameraViewModel: ObservableObject {
             : .standard
     }
 
-    func resumeAfterAnalysis() async {
-        guard isPausedForAnalysis else {
+    func resumeIfPaused() async {
+        guard isCameraSuspended else {
             return
         }
 
@@ -522,42 +545,37 @@ final class CameraViewModel: ObservableObject {
                 resumed = false
             }
             guard !Task.isCancelled, generation == configurationGeneration,
-                  isPausedForAnalysis else { return }
+                  isCameraSuspended else { return }
             if resumed, let activeSessionConfiguration {
-                // The Library presents AF on return. Restore that hardware
-                // intent without resetting exposure, PRO mode, or video outputs.
-                await restoreAutoFocus()
-                guard !Task.isCancelled, generation == configurationGeneration,
-                      isPausedForAnalysis else { return }
-                isPausedForAnalysis = false
+                isCameraSuspended = false
                 isDepthCaptureReady = activeSessionConfiguration.depthDeliverySupported
                     && activeSessionConfiguration.capturePlan.canCapturePhotoDepth
                 statusMessage = statusText(for: activeSessionConfiguration.capturePlan)
             } else {
-                isPausedForAnalysis = false
+                isCameraSuspended = false
                 if selectedRGBSourceID == nil {
                     await configureDefaultSelection()
                 } else {
                     await configureCurrentSelection()
                 }
             }
-            guard !Task.isCancelled, !isPausedForAnalysis else { return }
+            guard !Task.isCancelled, !isCameraSuspended else { return }
             if CameraCaptureDataUsePreferences.usesLocationData() {
                 locationProvider.warmLocationCache()
             }
             scheduleRecentTAPLibraryPreviewRefresh()
         case .notDetermined:
-            isPausedForAnalysis = false
+            isCameraSuspended = false
             await start()
         case .denied, .restricted:
-            isPausedForAnalysis = false
+            isCameraSuspended = false
             activeSessionConfiguration = nil
             statusMessage = CameraCaptureStatusPresentation.message(
                 for: TAPDepthCaptureError.cameraAccessDenied,
                 context: .configuration
             )
         @unknown default:
-            isPausedForAnalysis = false
+            isCameraSuspended = false
             activeSessionConfiguration = nil
             statusMessage = CameraCaptureStatusPresentation.message(
                 for: TAPDepthCaptureError.cameraAccessDenied,

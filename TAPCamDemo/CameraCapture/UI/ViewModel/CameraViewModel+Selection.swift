@@ -25,7 +25,7 @@ extension CameraViewModel {
         transitionDuration: TimeInterval,
         beforeImmediateZoom: (@MainActor @Sendable () async throws -> Void)? = nil
     ) async {
-        guard !isPausedForAnalysis, !photographerModeState.isTransitioning, !isConfiguringSession,
+        guard !isCapturingPhoto, !isCameraSuspended, !photographerModeState.isTransitioning, !isConfiguringSession,
               !isVideoRecording, !isPreparingVideoMode else {
             return
         }
@@ -48,7 +48,7 @@ extension CameraViewModel {
     }
 
     func switchCameraPosition() async {
-        guard !isPausedForAnalysis, !isSessionControllerSuspectedWedged,
+        guard !isCapturingPhoto, !isCameraSuspended, !isSessionControllerSuspectedWedged,
               !photographerModeState.isTransitioning,
               !isConfiguringSession else {
             return
@@ -152,12 +152,12 @@ extension CameraViewModel {
     /// repeats the safety gates so a stale or duplicated tap cannot expose an
     /// incompletely configured manual-control surface.
     func setPhotographerModeEnabled(_ isEnabled: Bool) async {
-        guard !photographerModeState.isTransitioning,
+        guard !isCapturingPhoto, !photographerModeState.isTransitioning,
               !isConfiguringSession,
               !isSessionControllerSuspectedWedged,
               !isVideoRecording,
               !isPreparingVideoMode,
-              !isPausedForAnalysis else {
+              !isCameraSuspended else {
             return
         }
 
@@ -231,7 +231,7 @@ extension CameraViewModel {
                 throw PhotographerModeTransitionError(reason: .configurationFailed)
             }
             let result = try await sessionController.configure(request)
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
+            guard generation == configurationGeneration, !isCameraSuspended else {
                 return false
             }
 
@@ -244,7 +244,7 @@ extension CameraViewModel {
 
             applyPhotographerModeConfiguration(result)
             await applyRequestedGlobalAutoExposureBiasToActiveConfiguration()
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
+            guard generation == configurationGeneration, !isCameraSuspended else {
                 return false
             }
             photographerModeState = .active
@@ -301,12 +301,12 @@ extension CameraViewModel {
 
         do {
             let result = try await configureStandardTarget(target)
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
+            guard generation == configurationGeneration, !isCameraSuspended else {
                 return
             }
             applyStandardConfiguration(result, target: target)
             await applyRequestedGlobalAutoExposureBiasToActiveConfiguration()
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
+            guard generation == configurationGeneration, !isCameraSuspended else {
                 return
             }
             photographerModeState = .standard
@@ -359,7 +359,11 @@ extension CameraViewModel {
         zoomDuration: TimeInterval? = nil,
         beforeImmediateZoom: (@MainActor @Sendable () async throws -> Void)? = nil
     ) async {
-        guard !isPausedForAnalysis else {
+        guard !isCapturingPhoto else {
+            hasPendingSelectionReconfiguration = true
+            return
+        }
+        guard !isCameraSuspended else {
             configurationGeneration += 1
             invalidateVideoPreparation()
             activeSessionConfiguration = nil
@@ -463,14 +467,14 @@ extension CameraViewModel {
                 request,
                 zoomDuration: zoomDuration,
                 beforeImmediateZoom: {
-                    guard generation == self.configurationGeneration, !self.isPausedForAnalysis else {
+                    guard generation == self.configurationGeneration, !self.isCameraSuspended else {
                         throw CancellationError()
                     }
                     try await beforeImmediateZoom?()
                 }
             )
 
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
+            guard generation == configurationGeneration, !isCameraSuspended else {
                 return
             }
 
@@ -480,7 +484,7 @@ extension CameraViewModel {
             isDepthCaptureReady = result.depthDeliverySupported && result.capturePlan.canCapturePhotoDepth
             statusMessage = statusText(for: result.capturePlan)
             await applyRequestedGlobalAutoExposureBiasToActiveConfiguration()
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
+            guard generation == configurationGeneration, !isCameraSuspended else {
                 return
             }
             if photographerModeState.effectiveMode != .photographer {
@@ -799,6 +803,10 @@ extension CameraViewModel {
         }
         cancelCameraPathConfigurationWatchdog(generation: generation)
         isConfiguringSession = false
+        schedulePendingSelectionReconfigurationIfNeeded()
+    }
+
+    func schedulePendingSelectionReconfigurationIfNeeded() {
         guard hasPendingSelectionReconfiguration else {
             return
         }
@@ -806,7 +814,7 @@ extension CameraViewModel {
             await Task.yield()
             guard let self,
                   self.hasPendingSelectionReconfiguration,
-                  !self.isPausedForAnalysis else {
+                  !self.isCameraSuspended else {
                 return
             }
             await self.configureCurrentSelection()

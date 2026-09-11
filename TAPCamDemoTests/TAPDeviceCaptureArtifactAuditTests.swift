@@ -45,7 +45,7 @@ struct TAPDeviceCaptureArtifactAuditTests {
         await viewModel.start()
         try await Self.waitForCaptureReadiness(viewModel)
 
-        await viewModel.capture(suppressesShutterSound: true)
+        viewModel.capture(suppressesShutterSound: true)
         let stagedRecord = try await Self.waitForRecord(
             in: store,
             container: .jpeg

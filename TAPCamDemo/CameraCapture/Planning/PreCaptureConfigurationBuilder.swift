@@ -47,19 +47,12 @@ nonisolated enum PreCaptureConfigurationBuilder {
         from activePlan: CaptureSourcePlan,
         previewCropRectNormalized: CropRectNormalized
     ) -> CaptureSourcePlan {
-        let activeZoom = activePlan.zoom
-        let activeZoomFactor = activeZoom?.rawVideoZoomFactor
-        let usesFixedZoomCandidate = activeZoomFactor.map { zoom in
-            CameraCapabilityResolver.candidateZoomFactors.contains { abs($0 - zoom) < 0.001 }
-        } ?? false
-
-        return CaptureSourcePlan.make(
-            rgbSource: activePlan.rgbSource,
-            depthSource: activePlan.depthSource,
-            selectionMode: activePlan.selectionMode,
-            selectedZoomID: usesFixedZoomCandidate ? activeZoom?.id : nil,
-            selectedZoomFactor: usesFixedZoomCandidate ? nil : activeZoomFactor,
-            cropRectNormalized: previewCropRectNormalized
+        var plan = activePlan
+        plan.cropPolicy = CropPolicy(
+            mode: activePlan.cropPolicy.mode,
+            cropRectNormalized: previewCropRectNormalized,
+            destructiveFinalCropApplied: activePlan.cropPolicy.destructiveFinalCropApplied
         )
+        return plan
     }
 }

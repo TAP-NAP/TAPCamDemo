@@ -18,21 +18,20 @@ nonisolated enum TAPDepthManifestBuilder {
     ) throws -> TAPDepthManifest {
         let photo = capturePackage.photo
         let context = capturePackage.sourceContext
-        let device = context.sessionConfiguration.device
 
         let captureID = UUID().uuidString
         let resolvedDimensions = photo.resolvedSettings.photoDimensions
         let payload = TAPDepthManifest.Payload(
             id: captureID,
             capturedAt: TAPDateFormatting.iso8601.string(from: context.capturedAt),
-            camera: makeCamera(device: device),
+            camera: capturePackage.camera,
             photo: TAPDepthManifest.Photo(
                 width: resolvedDimensions.width,
                 height: resolvedDimensions.height,
                 orientation: Self.orientationDescription(from: photo.metadata),
                 metadataKeys: photo.metadata.keys.sorted()
             ),
-            depth: makeDepth(depthData: photo.depthData, device: device),
+            depth: makeDepth(depthData: photo.depthData, camera: capturePackage.camera),
             location: context.location.map(makeLocation),
             software: .current,
             livePhoto: makeLivePhoto(capturePackage.livePhotoMovie)
@@ -44,7 +43,7 @@ nonisolated enum TAPDepthManifestBuilder {
         return TAPDepthManifest(payload: payload, schema: schema)
     }
 
-    private static func makeCamera(device: AVCaptureDevice) -> TAPDepthManifest.Camera {
+    static func makeCamera(device: AVCaptureDevice) -> TAPDepthManifest.Camera {
         let activeFormat = device.activeFormat.tapCameraFormat
         let activeDepthFormat = device.activeDepthDataFormat?.tapCameraFormat
         let activePrimaryDevice = device.activePrimaryConstituent
@@ -81,8 +80,8 @@ nonisolated enum TAPDepthManifestBuilder {
         )
     }
 
-    private static func makeDepth(depthData: AVDepthData?, device: AVCaptureDevice) -> TAPDepthManifest.Depth {
-        let source = TAPDepthSourceClassifier.source(forDeviceType: device.deviceType.rawValue, localizedName: device.localizedName)
+    private static func makeDepth(depthData: AVDepthData?, camera: TAPDepthManifest.Camera) -> TAPDepthManifest.Depth {
+        let source = TAPDepthSourceClassifier.source(forDeviceType: camera.deviceType, localizedName: camera.localizedName)
         guard let depthData else {
             return TAPDepthManifest.Depth(
                 availability: .unavailable,

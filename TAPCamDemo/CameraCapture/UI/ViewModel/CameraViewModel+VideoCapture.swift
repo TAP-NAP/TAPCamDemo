@@ -19,8 +19,7 @@ extension CameraViewModel {
     func handleVideoRecordingWriterFailure(
         _ failure: CaptureSessionVideoRecordingFailure
     ) {
-        guard isVideoRecording,
-              activeVideoRecordingCaptureID == failure.captureID else {
+        guard activeVideoRecordingCaptureID == failure.captureID else {
             return
         }
         #if DEBUG
@@ -28,6 +27,14 @@ extension CameraViewModel {
             "video writer failed during recording captureID=\(failure.captureID, privacy: .private) domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public)"
         )
         #endif
+        reportCaptureFailure(NSError(domain: failure.domain, code: failure.code))
+        if !isVideoRecording {
+            // The router can report a failed first frame before start returns.
+            // Its pending operation owns recorder/workspace cleanup.
+            activeVideoRecordingCaptureID = nil
+            statusMessage = "Video recording failed · please record again."
+            return
+        }
         videoWriterFailureRecoveryTask?.cancel()
         videoWriterFailureRecoveryTask = Task { @MainActor [weak self] in
             await self?.recoverVideoRecordingAfterWriterFailure(
@@ -43,16 +50,16 @@ extension CameraViewModel {
         let generation = configurationGeneration
         cancelVideoRecordingStopTriggers()
         isVideoRecording = false
+        activeVideoRecordingCaptureID = nil
         videoPreparationState = .preparing
         videoRecordingStartedAt = nil
         statusMessage = "Video recording failed · rebuilding video mode..."
 
         try? await sessionController.cancelVideoRecordingAfterWriterFailure()
         try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
-        activeVideoRecordingCaptureID = nil
         videoRecordingTemporaryDirectoryURL = nil
 
-        guard generation == configurationGeneration, !isPausedForAnalysis else { return }
+        guard generation == configurationGeneration, !isCameraSuspended else { return }
         videoPreparationState = .idle
         let didPrepare = await prepareVideoModeIfNeeded()
         statusMessage = didPrepare
@@ -63,8 +70,9 @@ extension CameraViewModel {
 
     @discardableResult
     func prepareVideoModeIfNeeded() async -> Bool {
-        guard !isPausedForAnalysis,
+        guard !isCameraSuspended,
               !isVideoRecording,
+              !isCapturingPhoto,
               !isPreparingVideoMode || videoPreparationTask != nil,
               let activeSessionConfiguration else {
             return false
@@ -80,9 +88,7 @@ extension CameraViewModel {
 
         let recordsAudio = CameraCaptureDataUsePreferences.usesMicrophoneData()
             && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-        let videoRotationAngle = Self.videoRotationAngleForHorizonLevelCapture(
-            device: activeSessionConfiguration.device
-        )
+        let videoRotationAngle = videoCaptureRotationAngle
         let isVideoMirrored = activeSessionConfiguration.device.position == .front
         let depthFilteringEnabled = DepthAnalyzerPreferences.appleDepthFilteringEnabled()
 
@@ -112,33 +118,36 @@ extension CameraViewModel {
         using operation: @escaping @MainActor () async throws -> Void
     ) async -> Bool {
         let generation = configurationGeneration
+        let rotation = videoCaptureRotationAngle
         // AVFoundation work already on the session queue must drain. Every
         // waiter then rechecks its own parameters against the retained graph.
         while let task = videoPreparationTask {
             _ = await task.value
         }
         guard !Task.isCancelled, generation == configurationGeneration,
-              !isPausedForAnalysis else { return false }
+              !isCameraSuspended, !isCapturingPhoto else { return false }
 
         let task = Task { @MainActor in
             defer { videoPreparationTask = nil }
             do {
                 let alreadyPrepared = await isPrepared()
                 guard !Task.isCancelled, generation == configurationGeneration,
-                      !isPausedForAnalysis else { return false }
+                      !isCameraSuspended else { return false }
                 if !alreadyPrepared {
                     videoPreparationState = .preparing
                     statusMessage = "Preparing TAP video..."
                     try await operation()
                 }
                 guard !Task.isCancelled, generation == configurationGeneration,
-                      !isPausedForAnalysis else { return false }
-                statusMessage = "TAP video ready."
-                if videoPreparationState != .ready { videoPreparationState = .ready }
+                      !isCameraSuspended else { return false }
+                let currentRotationPrepared = rotation == videoCaptureRotationAngle
+                let nextState: CameraVideoPreparationState = currentRotationPrepared ? .ready : .needsPreparation
+                statusMessage = currentRotationPrepared ? "TAP video ready." : "Preparing TAP video..."
+                if videoPreparationState != nextState { videoPreparationState = nextState }
                 return true
             } catch {
                 guard !Task.isCancelled, generation == configurationGeneration,
-                      !isPausedForAnalysis else { return false }
+                      !isCameraSuspended else { return false }
                 statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
                 #if DEBUG
                 TAPDiagnostics.cameraCapture.error("video mode warmup failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
@@ -154,7 +163,17 @@ extension CameraViewModel {
 
     func invalidateVideoPreparation() {
         videoPreparationTask?.cancel()
+        if !isVideoRecording { activeVideoRecordingCaptureID = nil }
         videoPreparationState = .idle
+    }
+
+    /// Retire a shutter request before any asynchronous lifecycle cleanup.
+    /// Keep a running recording available for normal stop/finalization.
+    func cancelPendingVideoStartForLifecycle() {
+        guard videoPreparationTask != nil
+            || (!isVideoRecording && activeVideoRecordingCaptureID != nil) else { return }
+        configurationGeneration += 1
+        invalidateVideoPreparation()
     }
 
     func teardownPreparedVideoModeIfNeeded() async {
@@ -171,15 +190,17 @@ extension CameraViewModel {
     }
 
     func toggleVideoRecording(
-        pendingCaptureWorkerClient: (any AppAttestClient)? = nil
+        pendingCaptureWorkerClient: (any AppAttestClient)? = nil,
+        onAccepted: @MainActor () -> Void = {}
     ) async {
         if isVideoRecording {
+            onAccepted()
             await stopVideoRecording(
                 reason: .userStop,
                 pendingCaptureWorkerClient: pendingCaptureWorkerClient
             )
         } else {
-            await startVideoRecording(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
+            await startVideoRecording(pendingCaptureWorkerClient: pendingCaptureWorkerClient, onAccepted: onAccepted)
         }
     }
 
@@ -187,6 +208,9 @@ extension CameraViewModel {
         pendingCaptureWorkerClient: (any AppAttestClient)? = nil
     ) async {
         guard isVideoRecording else {
+            if activeVideoRecordingCaptureID != nil {
+                cancelPendingVideoStartForLifecycle()
+            }
             return
         }
         await stopVideoRecording(
@@ -196,127 +220,142 @@ extension CameraViewModel {
     }
 
     private func startVideoRecording(
-        pendingCaptureWorkerClient: (any AppAttestClient)?
+        pendingCaptureWorkerClient: (any AppAttestClient)?,
+        onAccepted: @MainActor () -> Void
     ) async {
+        let generation = configurationGeneration
         _ = await videoPreparationTask?.value
-        guard !isPausedForAnalysis else {
-            statusMessage = "Camera paused for analysis."
+        guard !Task.isCancelled, generation == configurationGeneration else { return }
+        guard !isCameraSuspended else {
+            statusMessage = "Camera paused."
             return
         }
         guard !isVideoRecording else {
             statusMessage = "TAP video recording is already running."
             return
         }
-        guard !isPreparingVideoMode else { return }
+        guard videoPreparationState == .ready, !isCapturingPhoto else { return }
         guard let configuration = activeSessionConfiguration else {
-            statusMessage = CameraCaptureStatusPresentation.message(
-                for: TAPDepthCaptureError.depthDeliveryUnsupported,
-                context: .capture
-            )
+            reportCaptureFailure(TAPDepthCaptureError.depthDeliveryUnsupported)
             return
         }
         guard configuration.depthDeliverySupported else {
-            statusMessage = CameraCaptureStatusPresentation.message(
-                for: TAPDepthCaptureError.depthDeliveryUnsupported,
-                context: .capture
-            )
+            reportCaptureFailure(TAPDepthCaptureError.depthDeliveryUnsupported)
             return
         }
         guard pendingJobCount < CaptureJobQueue.defaultMaximumPendingJobs else {
-            statusMessage = CameraCaptureStatusPresentation.message(
-                for: TAPDepthCaptureError.captureBackpressureLimitReached,
-                context: .capture
-            )
+            reportCaptureFailure(TAPDepthCaptureError.captureBackpressureLimitReached)
             return
         }
-        let generation = configurationGeneration
-        let depthFilteringEnabled = DepthAnalyzerPreferences.appleDepthFilteringEnabled()
-        videoPreparationState = .preparing
-        statusMessage = "Preparing TAP video..."
-
-        await prepareAndStartVideoRecording(
+        await submitPreparedVideoRecording(
             configuration: configuration,
-            depthFilteringEnabled: depthFilteringEnabled,
+            videoRotationAngle: videoCaptureRotationAngle,
             generation: generation,
-            pendingCaptureWorkerClient: pendingCaptureWorkerClient
+            pendingCaptureWorkerClient: pendingCaptureWorkerClient,
+            onAccepted: onAccepted
         )
     }
 
-    private func prepareAndStartVideoRecording(
+    private func submitPreparedVideoRecording(
         configuration: SessionConfigurationResult,
-        depthFilteringEnabled: Bool,
+        videoRotationAngle: CGFloat?,
         generation: Int,
-        pendingCaptureWorkerClient: (any AppAttestClient)?
+        pendingCaptureWorkerClient: (any AppAttestClient)?,
+        onAccepted: @MainActor () -> Void
     ) async {
         let captureID = UUID().uuidString
         let capturedAt = Date()
-        let recordsAudio = CameraCaptureDataUsePreferences.usesMicrophoneData()
-            && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         let location = CameraCaptureDataUsePreferences.usesLocationData()
             ? locationProvider.cachedCaptureLocation().map(TAPPendingCaptureLocation.init)
             : nil
 
-        do {
-            let workspace = try await pendingCaptureStore.beginVideoCaptureWorkspace(
-                captureID: captureID
-            )
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
-                try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
-                return
-            }
-            let request = Self.videoRecordingRequest(
-                captureID: captureID,
-                capturedAt: capturedAt,
-                outputURL: workspace.artifactURL,
-                configuration: configuration,
-                recordsAudio: recordsAudio,
-                depthFilteringEnabled: depthFilteringEnabled
-            )
-            try await sessionController.prepareVideoRecording(
-                configuration: configuration,
-                recordsAudio: request.recordsAudio,
-                videoRotationAngle: request.videoRotationAngle,
-                isVideoMirrored: request.isVideoMirrored,
-                depthFilteringEnabled: request.depthFilteringEnabled
-            )
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
-                try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
-                return
-            }
-            let recorder = try await sessionController.startVideoRecording(
-                request: request,
-                configuration: configuration,
-                location: location
-            )
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
+        var recorder: TAPVideoRecorder?
+        let didStart = await startVideoRecording(
+            captureID: captureID,
+            generation: generation,
+            prepareAndStart: { [self] in
+                let workspace = try await pendingCaptureStore.beginVideoCaptureWorkspace(
+                    captureID: captureID
+                )
+                try checkVideoRecordingStart(captureID: captureID, generation: generation)
+                recorder = try await sessionController.startVideoRecording(
+                    captureID: captureID,
+                    capturedAt: capturedAt,
+                    outputURL: workspace.artifactURL,
+                    configuration: configuration,
+                    expectedVideoRotationAngle: videoRotationAngle,
+                    location: location
+                )
+                return workspace.bundleURL
+        }, cancelRecording: { [self] in
+            if let recorder {
                 await sessionController.cancelVideoRecording(recorder)
-                try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
-                return
             }
+        }, onAccepted: onAccepted)
+        guard didStart, isVideoRecording, activeVideoRecordingCaptureID == captureID else { return }
+        installVideoRecordingLimitTask(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
+        installVideoThermalObserver(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
+    }
 
-            videoRecordingTemporaryDirectoryURL = workspace.bundleURL
-            activeVideoRecordingCaptureID = captureID
-            isVideoRecording = true
-            videoPreparationState = .idle
-            videoRecordingStartedAt = Date()
-            statusMessage = "Recording TAP video..."
-            installVideoRecordingLimitTask(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
-            installVideoThermalObserver(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
-        } catch {
-            try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
-                return
-            }
-            isVideoRecording = false
-            videoPreparationState = .needsPreparation
-            videoRecordingStartedAt = nil
-            activeVideoRecordingCaptureID = nil
-            videoRecordingTemporaryDirectoryURL = nil
-            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
-            #if DEBUG
-            TAPDiagnostics.cameraCapture.error("video recording start failed captureID=\(captureID, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
-            #endif
+    func checkVideoRecordingStart(captureID: String, generation: Int) throws {
+        guard !Task.isCancelled, generation == configurationGeneration,
+              !isCameraSuspended, !isCapturingPhoto,
+              activeVideoRecordingCaptureID == captureID else {
+            throw CancellationError()
         }
+    }
+
+    @discardableResult
+    func startVideoRecording(
+        captureID: String,
+        generation: Int,
+        prepareAndStart: @escaping @MainActor () async throws -> URL,
+        cancelRecording: @escaping @MainActor () async -> Void,
+        onAccepted: @MainActor () -> Void = {}
+    ) async -> Bool {
+        guard videoPreparationTask == nil, videoPreparationState == .ready,
+              !isVideoRecording, !isCapturingPhoto,
+              generation == configurationGeneration, !isCameraSuspended else { return false }
+        activeVideoRecordingCaptureID = captureID
+        videoPreparationState = .preparing
+        statusMessage = "Preparing TAP video..."
+        onAccepted()
+        // Reuse the preparation tail so retries wait for physical start and
+        // cancellation to drain, including a late native start completion.
+        let task = Task { @MainActor in
+            defer { videoPreparationTask = nil }
+            do {
+                try checkVideoRecordingStart(captureID: captureID, generation: generation)
+                let directory = try await prepareAndStart()
+                try checkVideoRecordingStart(captureID: captureID, generation: generation)
+                videoRecordingTemporaryDirectoryURL = directory
+                isVideoRecording = true
+                videoPreparationState = .idle
+                videoRecordingStartedAt = Date()
+                statusMessage = "Recording TAP video..."
+                return true
+            } catch {
+                await cancelRecording()
+                try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
+                if activeVideoRecordingCaptureID == captureID {
+                    activeVideoRecordingCaptureID = nil
+                    if generation == configurationGeneration, !isCameraSuspended {
+                        if !(error is CancellationError) { reportCaptureFailure(error) }
+                    }
+                }
+                guard generation == configurationGeneration, !isCameraSuspended else { return false }
+                isVideoRecording = false
+                videoPreparationState = .needsPreparation
+                videoRecordingStartedAt = nil
+                videoRecordingTemporaryDirectoryURL = nil
+                #if DEBUG
+                TAPDiagnostics.cameraCapture.error("video recording start failed captureID=\(captureID, privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                #endif
+                return false
+            }
+        }
+        videoPreparationTask = task
+        return await task.value
     }
 
     func stopVideoRecording(
@@ -326,7 +365,9 @@ extension CameraViewModel {
         await stopVideoRecording(
             reason: reason,
             finishRecording: { try await sessionController.stopVideoRecording(reason: reason) },
-            isVideoModePrepared: { await sessionController.isVideoRecordingPrepared() },
+            isVideoModePrepared: {
+                await sessionController.isVideoRecordingPrepared(videoRotationAngle: videoCaptureRotationAngle)
+            },
             processPendingCaptures: {
                 if let pendingCaptureWorkerClient {
                     await retryPendingCaptures(pendingCaptureWorkerClient: pendingCaptureWorkerClient)
@@ -347,6 +388,7 @@ extension CameraViewModel {
 
         let generation = configurationGeneration
         let captureID = activeVideoRecordingCaptureID
+        activeVideoRecordingCaptureID = nil
         cancelVideoRecordingStopTriggers()
         isVideoRecording = false
         videoPreparationState = .preparing
@@ -372,13 +414,17 @@ extension CameraViewModel {
                 try? await pendingCaptureStore.abortVideoCaptureWorkspace(captureID: captureID)
             }
             videoRecordingTemporaryDirectoryURL = nil
-            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
+            if reason == .userStop, !(error is CancellationError) {
+                reportCaptureFailure(error)
+            } else {
+                statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
+            }
             #if DEBUG
             TAPDiagnostics.cameraCapture.error("video recording stop failed captureID=\(captureID ?? "none", privacy: .private) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
         }
         let hasPreparedVideo = await isVideoModePrepared()
-        if generation == configurationGeneration, !isPausedForAnalysis {
+        if generation == configurationGeneration, !isCameraSuspended {
             videoPreparationState = hasPreparedVideo ? .ready : .needsPreparation
         }
         guard let record = ingestedRecord else { return }
@@ -425,28 +471,6 @@ extension CameraViewModel {
             )
             #endif
         }
-    }
-
-    private static func videoRecordingRequest(
-        captureID: String,
-        capturedAt: Date,
-        outputURL: URL,
-        configuration: SessionConfigurationResult,
-        recordsAudio: Bool,
-        depthFilteringEnabled: Bool
-    ) -> TAPVideoRecordingRequest {
-        TAPVideoRecordingRequest(
-            captureID: captureID,
-            capturedAt: capturedAt,
-            outputURL: outputURL,
-            maximumDuration: TAPVideoRecordingRequest.defaultMaximumDuration,
-            videoRotationAngle: videoRotationAngleForHorizonLevelCapture(
-                device: configuration.device
-            ),
-            isVideoMirrored: configuration.device.position == .front,
-            recordsAudio: recordsAudio,
-            depthFilteringEnabled: depthFilteringEnabled
-        )
     }
 
     private func installVideoRecordingLimitTask(
@@ -500,9 +524,31 @@ extension CameraViewModel {
         }
     }
 
-    @MainActor
-    private static func videoRotationAngleForHorizonLevelCapture(device: AVCaptureDevice) -> CGFloat? {
-        let rotationCoordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
-        return rotationCoordinator.videoRotationAngleForHorizonLevelCapture
+    func observeVideoCaptureRotation() {
+        let device = activeSessionConfiguration?.device
+        guard videoCaptureRotationCoordinator?.device?.uniqueID != device?.uniqueID else { return }
+        videoCaptureRotationObservation = nil
+        videoCaptureRotationCoordinator = nil
+        videoCaptureRotationAngle = nil
+        guard let device else { return }
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
+        videoCaptureRotationCoordinator = coordinator
+        videoCaptureRotationDidChange(coordinator.videoRotationAngleForHorizonLevelCapture)
+        videoCaptureRotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelCapture, options: [.new]) {
+            [weak self, weak coordinator] _, _ in
+            Task { @MainActor [weak self, weak coordinator] in
+                guard let self, let coordinator,
+                      self.videoCaptureRotationCoordinator === coordinator else { return }
+                self.videoCaptureRotationDidChange(coordinator.videoRotationAngleForHorizonLevelCapture)
+            }
+        }
+    }
+
+    func videoCaptureRotationDidChange(_ angle: CGFloat) {
+        guard videoCaptureRotationAngle.map({ abs($0 - angle) >= 0.01 }) ?? true else { return }
+        videoCaptureRotationAngle = angle
+        if !isVideoRecording, videoPreparationState == .ready {
+            videoPreparationState = .needsPreparation
+        }
     }
 }

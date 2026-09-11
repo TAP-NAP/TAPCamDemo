@@ -104,6 +104,6 @@ nonisolated struct SingleCamPhotoCaptureResult: @unchecked Sendable {
 /// bytes, `AVCapturePhoto.depthData`, and capture metadata from one
 /// `AVCapturePhotoOutput` callback. Modeling that as one unit keeps the code
 /// aligned with Apple's paired still-photo depth pipeline.
-protocol SingleCamPhotoCaptureProvider: Sendable {
+nonisolated protocol SingleCamPhotoCaptureProvider: Sendable {
     func capturePhotoDepth(job: CaptureJob, context: CaptureSourceContext) async throws -> SingleCamPhotoCaptureResult
 }

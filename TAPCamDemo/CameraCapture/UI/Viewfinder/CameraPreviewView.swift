@@ -112,13 +112,11 @@ struct CameraPreviewView: UIViewRepresentable {
             previewingObservation?.invalidate()
             observedPreviewLayer = previewLayer
             observedGeneration = generation
-            previewingObservation = previewLayer.observe(\.isPreviewing, options: [.initial, .new]) { [weak self] _, change in
-                guard let isPreviewing = change.newValue else {
-                    return
-                }
+            previewingObservation = previewLayer.observe(\.isPreviewing, options: [.initial, .new]) { [weak self] _, _ in
                 Task { @MainActor [weak self] in
-                    guard self?.observedGeneration == generation else { return }
-                    self?.onPreviewingChanged(isPreviewing, generation)
+                    guard let self, self.observedGeneration == generation,
+                          let layer = self.observedPreviewLayer else { return }
+                    self.onPreviewingChanged(layer.isPreviewing, generation)
                 }
             }
         }

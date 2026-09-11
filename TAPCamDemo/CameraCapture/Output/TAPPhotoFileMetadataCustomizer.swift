@@ -21,12 +21,12 @@ import Foundation
 nonisolated final class TAPPhotoFileMetadataCustomizer: NSObject, AVCapturePhotoFileDataRepresentationCustomizer {
     private let capturedAt: Date
     private let location: CLLocation?
-    private let device: AVCaptureDevice
+    private let camera: TAPDepthManifest.Camera
 
-    init(capturedAt: Date, location: CLLocation?, device: AVCaptureDevice) {
+    init(capturedAt: Date, location: CLLocation?, camera: TAPDepthManifest.Camera) {
         self.capturedAt = capturedAt
         self.location = location
-        self.device = device
+        self.camera = camera
         super.init()
     }
 
@@ -55,8 +55,8 @@ nonisolated final class TAPPhotoFileMetadataCustomizer: NSObject, AVCapturePhoto
         exif[kCGImagePropertyExifDateTimeOriginal as String] = TAPExifDateFormatting.local.string(from: capturedAt)
         exif[kCGImagePropertyExifDateTimeDigitized as String] = TAPExifDateFormatting.local.string(from: capturedAt)
         exif[kCGImagePropertyExifUserComment as String] = TAPDepthManifest.exifUserCommentPointer
-        exif[kCGImagePropertyExifLensModel as String] = device.localizedName
-        if let nominalFocalLength = device.tapNominalFocalLengthIn35mmFilm {
+        exif[kCGImagePropertyExifLensModel as String] = camera.localizedName
+        if let nominalFocalLength = camera.nominalFocalLengthIn35mmFilmMillimeters {
             exif[kCGImagePropertyExifFocalLenIn35mmFilm as String] = nominalFocalLength
         }
         return exif
@@ -65,7 +65,7 @@ nonisolated final class TAPPhotoFileMetadataCustomizer: NSObject, AVCapturePhoto
     private func tiffDictionary(from metadata: [String: Any]) -> [String: Any] {
         var tiff = metadata[kCGImagePropertyTIFFDictionary as String] as? [String: Any] ?? [:]
         tiff[kCGImagePropertyTIFFMake as String] = "Apple"
-        tiff[kCGImagePropertyTIFFModel as String] = device.modelID
+        tiff[kCGImagePropertyTIFFModel as String] = camera.modelID
         tiff[kCGImagePropertyTIFFSoftware as String] = "TAPCamDemo"
         tiff[kCGImagePropertyTIFFDateTime as String] = TAPExifDateFormatting.local.string(from: capturedAt)
         return tiff

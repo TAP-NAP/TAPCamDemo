@@ -69,12 +69,16 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
     /// The preview remains live while this pipeline captures, builds the logical
     /// package, embeds the manifest into the selected HEIC/JPG container, stages
     /// it in the Pending Capture Queue, and records metrics.
+    /// Native completion and a camera-fact snapshot release camera transitions
+    /// before byte packaging starts.
     ///
     /// - Tag: RunSingleCamCapturePipeline
+    @concurrent
     func runSingleCamJob(
         job: CaptureJob,
         context: CaptureSourceContext,
-        queueWaitDuration: TimeInterval?
+        queueWaitDuration: TimeInterval?,
+        onPhotoCaptureFinished: (@MainActor @Sendable () -> Void)? = nil
     ) async -> Result<CaptureWriteResult, Error> {
         let totalStart = Date()
         var captureDuration: TimeInterval?
@@ -85,19 +89,32 @@ nonisolated final class CapturePipeline: @unchecked Sendable {
 
         do {
             let captureStart = Date()
-            let captureResult = try await photoDepthProvider.capturePhotoDepth(job: job, context: context)
+            let captureResult: SingleCamPhotoCaptureResult
+            do {
+                captureResult = try await photoDepthProvider.capturePhotoDepth(job: job, context: context)
+            } catch {
+                await onPhotoCaptureFinished?()
+                throw error
+            }
             defer {
                 captureResult.livePhotoMovie?.removeTemporaryFile()
             }
             captureDuration = Date().timeIntervalSince(captureStart)
 
             let packageBuildStart = Date()
-            let capturePackage = try CapturePackageBuilder.makePackage(
-                job: job,
-                context: context,
-                captureResult: captureResult
-            )
+            let capturePackage: CapturePackage
+            do {
+                capturePackage = try CapturePackageBuilder.makePackage(
+                    job: job,
+                    context: context,
+                    captureResult: captureResult
+                )
+            } catch {
+                await onPhotoCaptureFinished?()
+                throw error
+            }
             packageBuildDuration = Date().timeIntervalSince(packageBuildStart)
+            await onPhotoCaptureFinished?()
 
             let packagingStart = Date()
             let artifact = try packager.package(capturePackage)

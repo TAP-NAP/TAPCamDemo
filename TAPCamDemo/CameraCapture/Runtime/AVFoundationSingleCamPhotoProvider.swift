@@ -44,7 +44,7 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
             livePhotoMovieFileURL: livePhotoPlan?.movieFileURL,
             livePhotoVideoCodecType: livePhotoPlan?.codec
         )
-        let videoRotationAngle = Self.videoRotationAngleForHorizonLevelCapture(
+        let videoRotationAngle = await Self.videoRotationAngleForHorizonLevelCapture(
             device: context.sessionConfiguration.device
         )
 

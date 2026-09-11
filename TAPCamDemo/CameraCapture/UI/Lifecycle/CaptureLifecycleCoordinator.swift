@@ -15,19 +15,13 @@ import SwiftUI
 /// retry staged pending captures.
 final class CaptureLifecycleCoordinator: ObservableObject {
     nonisolated let objectWillChange = ObservableObjectPublisher()
-    nonisolated static let startupCredentialWarmupDelayNanoseconds: UInt64 = 1_500_000_000
-    nonisolated static let startupPendingRetryDelayNanoseconds: UInt64 = 1_500_000_000
 
     private var didLeaveActiveScene = false
     @MainActor @Published private var captureModeChangeTask: Task<Void, Never>?
-    @MainActor @Published private var libraryReturnTask: (id: UUID, task: Task<Void, Never>)?
+    @MainActor @Published private var cameraResumeTask: (id: UUID, task: Task<Void, Never>)?
 
     @MainActor var isChangingCaptureMode: Bool {
-        captureModeChangeTask != nil || isReturningFromLibrary
-    }
-
-    @MainActor private var isReturningFromLibrary: Bool {
-        libraryReturnTask != nil
+        captureModeChangeTask != nil || cameraResumeTask != nil
     }
 
     nonisolated init() {}
@@ -73,14 +67,11 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     func cancelCaptureModeChange() {
         // Keep the gate until any already-started session-queue operation returns.
         captureModeChangeTask?.cancel()
-        libraryReturnTask?.task.cancel()
+        cameraResumeTask?.task.cancel()
     }
 
     @MainActor
-    func suspendForInactiveScene(pauseCamera: () -> Void) {
-        // Preserve foreground recovery intent even if cancellation arrives
-        // during session restart, AF restoration, or video preparation.
-        if isReturningFromLibrary { pauseCamera() }
+    func suspendForInactiveScene() {
         cancelCaptureModeChange()
     }
 
@@ -95,14 +86,13 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         viewModel: CameraViewModel,
         appAttestController: AppAttestRuntimeController
     ) async {
-        try? await Task.sleep(nanoseconds: Self.startupCredentialWarmupDelayNanoseconds)
         guard !Task.isCancelled else { return }
-        guard !viewModel.isBusyForNonCaptureStartupWork else {
+        guard viewModel.hasReleasedDeferredLibraryCoverWork,
+              !viewModel.isBusyForNonCaptureStartupWork else {
             return
         }
         await appAttestController.warmPendingCaptureSigningCredential()
 
-        try? await Task.sleep(nanoseconds: Self.startupPendingRetryDelayNanoseconds)
         guard !Task.isCancelled else { return }
         await retryPendingCaptures(
             viewModel: viewModel,
@@ -120,46 +110,50 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         chromeOrientation: CameraChromeOrientationController,
         stopCamera: () -> Void
     ) {
-        cancelCaptureModeChange()
         chromeOrientation.stop()
+        cancelCaptureModeChange()
         stopCamera()
     }
 
     @MainActor @discardableResult
-    func libraryPresentationDidChange(
-        isPresented: Bool,
-        preparesVideoMode: Bool,
+    func resumeCamera(
+        preparesVideoMode: @escaping @MainActor () -> Bool,
         canResumeCamera: @escaping @MainActor () -> Bool,
-        resumeAfterAnalysis: @escaping @MainActor () async -> Void,
+        resumeIfPaused: @escaping @MainActor () async -> Void,
         prepareVideoMode: @escaping @MainActor () async -> Bool,
         isCameraReady: @escaping @MainActor () -> Bool,
+        isVideoReady: @escaping @MainActor () -> Bool = { false },
         retryPendingCaptures: @escaping @MainActor () async -> Void,
         completion: @escaping @MainActor (LibraryReturnResult) -> Void
     ) -> Task<Void, Never>? {
         let previousModeTask = captureModeChangeTask
-        let previousReturnTask = libraryReturnTask?.task
-        cancelCaptureModeChange()
-        guard !isPresented else { return nil }
+        let previousResumeTask = cameraResumeTask?.task
+        previousResumeTask?.cancel()
 
         let id = UUID()
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
-                if libraryReturnTask?.id == id {
-                    libraryReturnTask = nil
+                if cameraResumeTask?.id == id {
+                    cameraResumeTask = nil
                 }
             }
-            // Cancellation retires publication, but already-started graph work
-            // must finish before the next return or mode change can begin.
+            // Navigation preserves an accepted mode change. Join its work and
+            // any retired resume before deciding whether resources need repair.
             await previousModeTask?.value
-            await previousReturnTask?.value
+            await previousResumeTask?.value
             guard !Task.isCancelled, canResumeCamera() else { return }
-            await resumeAfterAnalysis()
+            if !isCameraReady() { await resumeIfPaused() }
             guard !Task.isCancelled, canResumeCamera() else { return }
 
             let result: LibraryReturnResult
-            if preparesVideoMode {
-                let ready = await prepareVideoMode()
+            if preparesVideoMode() {
+                let ready: Bool
+                if isVideoReady() {
+                    ready = true
+                } else {
+                    ready = await prepareVideoMode()
+                }
                 guard !Task.isCancelled, canResumeCamera() else { return }
                 result = ready ? .videoReady : .failed
             } else {
@@ -172,7 +166,7 @@ final class CaptureLifecycleCoordinator: ObservableObject {
                 await retryPendingCaptures()
             }
         }
-        libraryReturnTask = (id, task)
+        cameraResumeTask = (id, task)
         return task
     }
 
@@ -217,7 +211,8 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         viewModel: CameraViewModel,
         appAttestController: AppAttestRuntimeController
     ) async {
-        let isCameraBusy = viewModel.isBusyForNonCaptureStartupWork
+        let isCameraBusy = !viewModel.hasReleasedDeferredLibraryCoverWork
+            || viewModel.isBusyForNonCaptureStartupWork
         guard Self.shouldRetryPendingCaptures(
             isCredentialPreparationActive: appAttestController.isPreparingCredential,
             isCameraBusy: isCameraBusy

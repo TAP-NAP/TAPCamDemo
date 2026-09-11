@@ -14,10 +14,12 @@ import Foundation
 /// This package owns normalized capture facts only: job identity, selected
 /// source context, the resolved Runtime output, and the `AVCapturePhoto`. It
 /// does not decide how bytes are physically written or where the result is
-/// persisted.
+/// persisted. Camera device facts are copied before the next configuration is
+/// allowed to change the live device.
 nonisolated struct CapturePackage: @unchecked Sendable {
     let job: CaptureJob
     let sourceContext: CaptureSourceContext
+    let camera: TAPDepthManifest.Camera
     let rgbSource: CameraProfile
     let depthSource: DepthProfile?
     let pairingMode: RGBDepthPairingMode
@@ -60,6 +62,7 @@ nonisolated enum CapturePackageBuilder {
         return CapturePackage(
             job: job,
             sourceContext: context,
+            camera: TAPDepthManifestBuilder.makeCamera(device: context.sessionConfiguration.device),
             rgbSource: plan.rgbSource,
             depthSource: plan.depthSource,
             pairingMode: plan.pairingMode,

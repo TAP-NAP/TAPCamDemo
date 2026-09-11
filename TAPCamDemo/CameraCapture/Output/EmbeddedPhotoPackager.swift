@@ -51,7 +51,7 @@ nonisolated struct EmbeddedPhotoPackager: Sendable {
         let customizer = TAPPhotoFileMetadataCustomizer(
             capturedAt: capturePackage.sourceContext.capturedAt,
             location: capturePackage.sourceContext.location,
-            device: capturePackage.sourceContext.sessionConfiguration.device
+            camera: capturePackage.camera
         )
 
         let basePhotoStart = Date()

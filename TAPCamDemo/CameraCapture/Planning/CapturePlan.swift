@@ -67,7 +67,7 @@ nonisolated struct CaptureSourcePlan: @unchecked Sendable {
     let formatSelection: PhotoDepthFormatSelection?
     let zoom: ZoomProfile?
     let zoomCapability: ZoomCapability
-    let cropPolicy: CropPolicy
+    var cropPolicy: CropPolicy
     let captureConfig: CaptureConfig
 
     var canCapturePhotoDepth: Bool {

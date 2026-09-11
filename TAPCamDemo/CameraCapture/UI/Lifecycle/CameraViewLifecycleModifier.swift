@@ -23,7 +23,7 @@ struct CameraViewLifecycleModifier: ViewModifier {
 
     private let lifecycleCoordinator: CaptureLifecycleCoordinator
     private let isSettingsPresented: Bool
-    private let resumesVideoModeAfterLibrary: Bool
+    private let resumesVideoModeAfterLibrary: @MainActor @Sendable () -> Bool
     private let onLibraryReturnCompleted:
         @MainActor @Sendable (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
 
@@ -34,7 +34,7 @@ struct CameraViewLifecycleModifier: ViewModifier {
         chromeOrientation: CameraChromeOrientationController,
         appAttestController: AppAttestRuntimeController,
         isSettingsPresented: Bool,
-        resumesVideoModeAfterLibrary: Bool,
+        resumesVideoModeAfterLibrary: @escaping @MainActor @Sendable () -> Bool,
         onLibraryReturnCompleted: @escaping
             @MainActor @Sendable (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
     ) {
@@ -52,10 +52,6 @@ struct CameraViewLifecycleModifier: ViewModifier {
         content
             .task {
                 await viewModel.start()
-                await lifecycleCoordinator.warmPendingCaptureSigningCredentialAndRetryIfNeeded(
-                    viewModel: viewModel,
-                    appAttestController: appAttestController
-                )
             }
             .onAppear(perform: viewDidAppear)
             .onDisappear(perform: viewDidDisappear)
@@ -91,13 +87,21 @@ struct CameraViewLifecycleModifier: ViewModifier {
 
     private func libraryPresentationDidChange(_ isPresented: Bool) {
         updateIdleTimerForCurrentPresentation()
-        lifecycleCoordinator.libraryPresentationDidChange(
-            isPresented: isPresented,
-            preparesVideoMode: resumesVideoModeAfterLibrary,
-            canResumeCamera: { scenePhase == .active && !routeStore.isLibraryPresented },
-            resumeAfterAnalysis: viewModel.resumeAfterAnalysis,
+        guard !isPresented else { return }
+        resumeCamera()
+    }
+
+    private func resumeCamera() {
+        lifecycleCoordinator.resumeCamera(
+            preparesVideoMode: { resumesVideoModeAfterLibrary() },
+            canResumeCamera: { scenePhase == .active },
+            resumeIfPaused: viewModel.resumeIfPaused,
             prepareVideoMode: { await viewModel.prepareVideoModeIfNeeded() },
-            isCameraReady: { viewModel.activeSessionConfiguration != nil },
+            isCameraReady: {
+                !viewModel.isCameraSuspended && !viewModel.isConfiguringSession
+                    && viewModel.activeSessionConfiguration != nil
+            },
+            isVideoReady: { viewModel.videoPreparationState == .ready },
             retryPendingCaptures: { [weak lifecycleCoordinator, viewModel, appAttestController] in
                 await lifecycleCoordinator?.retryPendingCaptures(
                     viewModel: viewModel,
@@ -105,6 +109,7 @@ struct CameraViewLifecycleModifier: ViewModifier {
                 )
             },
             completion: { result in
+                guard !routeStore.isLibraryPresented else { return }
                 onLibraryReturnCompleted(result)
             }
         )
@@ -113,9 +118,9 @@ struct CameraViewLifecycleModifier: ViewModifier {
     private func scenePhaseDidChange(_ phase: ScenePhase) {
         updateIdleTimerForCurrentPresentation()
         if phase != .active {
-            lifecycleCoordinator.suspendForInactiveScene(pauseCamera: viewModel.pauseForAnalysis)
-        } else if !routeStore.isLibraryPresented, viewModel.isPausedForAnalysis {
-            libraryPresentationDidChange(false)
+            lifecycleCoordinator.suspendForInactiveScene()
+        } else if viewModel.isCameraSuspended {
+            resumeCamera()
         }
         let shouldReturnToCameraOnForeground = lifecycleCoordinator.foregroundRouteRestorePolicy(
             for: phase,
@@ -173,7 +178,7 @@ extension View {
         chromeOrientation: CameraChromeOrientationController,
         appAttestController: AppAttestRuntimeController,
         isSettingsPresented: Bool,
-        resumesVideoModeAfterLibrary: Bool,
+        resumesVideoModeAfterLibrary: @escaping @MainActor @Sendable () -> Bool,
         onLibraryReturnCompleted: @escaping
             @MainActor @Sendable (CaptureLifecycleCoordinator.LibraryReturnResult) -> Void
     ) -> some View {

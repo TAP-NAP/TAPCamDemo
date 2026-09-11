@@ -114,6 +114,26 @@ struct TAPCameraCapturePresentationTests {
         #expect(viewModel.canUseVideoShutter, "The stop control must remain available")
     }
 
+    @Test @MainActor func nativePhotoCaptureBlocksCameraChangesUntilDelivery() async {
+        let viewModel = CameraViewModel(capabilityMatrix: CapabilityMatrix(rgbSources: [], depthCandidates: []),
+            libraryStore: LibraryMediaStore())
+        viewModel.isDepthCaptureReady = true
+        viewModel.pendingJobCount = 1
+        viewModel.isCapturingPhoto = true
+        viewModel.statusMessage = "Photo in flight"
+        let generation = viewModel.configurationGeneration
+        let photographerState = viewModel.photographerModeState
+        #expect(!viewModel.canCapture && !viewModel.canTogglePhotographerMode)
+        await viewModel.setPhotographerModeEnabled(true)
+        await viewModel.switchCameraPosition()
+        #expect(await viewModel.prepareVideoMode { Issue.record("Video changed the graph during still capture") } == false)
+        #expect(viewModel.configurationGeneration == generation)
+        #expect(viewModel.photographerModeState == photographerState && viewModel.statusMessage == "Photo in flight")
+        viewModel.isCapturingPhoto = false
+        #expect(viewModel.canCapture, "Packaging a delivered photo does not keep the native capture gate locked")
+        #expect(await viewModel.prepareVideoMode {})
+    }
+
     @Test(.timeLimit(.minutes(1))) @MainActor
     func stoppedVideoRequestsPreparationAndRetryWaitsForTheSessionOperation() async throws {
         let viewModel = CameraViewModel(capabilityMatrix: CapabilityMatrix(rgbSources: [], depthCandidates: []),
@@ -322,6 +342,226 @@ struct TAPCameraCapturePresentationTests {
         #expect(states.filter { $0 == .needsPreparation }.count == (retainsGraph ? 0 : 1))
     }
 
+    @Test(.timeLimit(.minutes(1)), arguments: [0, 1]) @MainActor
+    func lifecycleCancelsPendingVideoStartAtEverySuspension(stage: Int) async throws {
+        let directory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TAPPendingCaptureStore(rootURL: directory)
+        let viewModel = CameraViewModel(capabilityMatrix: CapabilityMatrix(rgbSources: [], depthCandidates: []),
+            pendingCaptureStore: store, libraryStore: LibraryMediaStore())
+        viewModel.videoPreparationState = .ready
+        let captureID = UUID().uuidString
+        let generation = viewModel.configurationGeneration
+        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        defer { release?.resume() }
+        var workspaceURL: URL?
+        var recorderStarted = false
+        var recorderCancelled = false
+        var completedStages: [Int] = []
+        let start = Task { @MainActor in
+            await viewModel.startVideoRecording(captureID: captureID, generation: generation,
+                prepareAndStart: {
+                    let workspace = try await store.beginVideoCaptureWorkspace(captureID: captureID)
+                    workspaceURL = workspace.bundleURL
+                    for currentStage in 0...1 {
+                        // The native recorder may start before its async call returns.
+                        if currentStage == 1 { recorderStarted = true }
+                        if currentStage == stage {
+                            await withCheckedContinuation { continuation in
+                                release = continuation
+                                startedContinuation.yield(())
+                                startedContinuation.finish()
+                            }
+                        }
+                        try viewModel.checkVideoRecordingStart(captureID: captureID, generation: generation)
+                        completedStages.append(currentStage)
+                    }
+                    return workspace.bundleURL
+                }, cancelRecording: {
+                    if recorderStarted { recorderCancelled = true }
+                })
+        }
+        var iterator = started.makeAsyncIterator()
+        #expect(await iterator.next() != nil)
+        #expect(viewModel.activeVideoRecordingCaptureID == captureID)
+        #expect(!viewModel.isVideoRecording && viewModel.isPreparingVideoMode)
+        viewModel.cancelPendingVideoStartForLifecycle()
+        #expect(viewModel.activeVideoRecordingCaptureID == nil)
+        #expect(viewModel.videoPreparationState == .idle)
+        #expect(viewModel.videoPreparationTask != nil, "Native work must drain before retry")
+        let continuation = try #require(release)
+        release = nil
+        continuation.resume()
+        #expect(await start.value == false)
+        #expect(completedStages == Array(0..<stage))
+        #expect(recorderStarted == (stage == 1) && recorderCancelled == (stage == 1))
+        #expect(!FileManager.default.fileExists(atPath: try #require(workspaceURL).path))
+        #expect(!viewModel.isVideoRecording && viewModel.videoRecordingStartedAt == nil)
+        #expect(viewModel.videoRecordingTemporaryDirectoryURL == nil)
+        #expect(viewModel.videoPreparationTask == nil && viewModel.videoPreparationState == .idle)
+        #expect(viewModel.captureFailureID == nil, "Lifecycle cancellation is not a capture failure")
+    }
+
+    @Test(.timeLimit(.minutes(1))) @MainActor
+    func videoRotationChangesRequirePreparationBeforeShutterSubmission() async {
+        let viewModel = CameraViewModel(capabilityMatrix: CapabilityMatrix(rgbSources: [], depthCandidates: []),
+            libraryStore: LibraryMediaStore())
+        let generation = viewModel.configurationGeneration
+        viewModel.videoCaptureRotationDidChange(90)
+        #expect(viewModel.videoPreparationState == .idle)
+        #expect(await viewModel.prepareVideoMode {})
+        viewModel.videoCaptureRotationDidChange(90)
+        #expect(viewModel.videoPreparationState == .ready)
+        viewModel.videoCaptureRotationDidChange(0)
+        #expect(viewModel.videoPreparationState == .needsPreparation)
+        for state in [CameraVideoPreparationState.idle, .preparing, .needsPreparation] {
+            viewModel.videoPreparationState = state
+            #expect(await viewModel.startVideoRecording(captureID: "unprepared", generation: generation,
+                prepareAndStart: { Issue.record("Unprepared shutter began native work"); throw CancellationError() },
+                cancelRecording: { Issue.record("Unprepared shutter has nothing to cancel") },
+                onAccepted: { Issue.record("An unprepared shutter cannot give acceptance feedback") }) == false)
+        }
+        #expect(viewModel.activeVideoRecordingCaptureID == nil && viewModel.captureFailureID == nil)
+        #expect(await viewModel.prepareVideoMode {
+            viewModel.videoCaptureRotationDidChange(270)
+        })
+        #expect(viewModel.videoPreparationState == .needsPreparation,
+            "A changed direction keeps Video selected and requests another preparation under the same blur")
+        #expect(await viewModel.prepareVideoMode {})
+        #expect(viewModel.videoPreparationState == .ready)
+        viewModel.isVideoRecording = true
+        viewModel.videoPreparationState = .idle
+        viewModel.videoCaptureRotationDidChange(180)
+        #expect(viewModel.videoPreparationState == .idle, "Recording keeps its accepted orientation")
+        #expect(viewModel.configurationGeneration == generation)
+    }
+
+    @Test(.timeLimit(.minutes(1))) @MainActor
+    func lifecycleCancelsShutterWaitingForPreparationBeforeCaptureIDExists() async throws {
+        let viewModel = CameraViewModel(capabilityMatrix: CapabilityMatrix(rgbSources: [], depthCandidates: []),
+            libraryStore: LibraryMediaStore())
+        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+        let (waiting, waitingContinuation) = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        defer { release?.resume() }
+        let preparation = Task { @MainActor in
+            await viewModel.prepareVideoMode {
+                await withCheckedContinuation { continuation in
+                    release = continuation
+                    startedContinuation.yield(())
+                    startedContinuation.finish()
+                }
+            }
+        }
+        var iterator = started.makeAsyncIterator()
+        #expect(await iterator.next() != nil)
+        let shutter = Task { @MainActor in
+            waitingContinuation.yield(())
+            waitingContinuation.finish()
+            await viewModel.toggleVideoRecording()
+        }
+        var waitingIterator = waiting.makeAsyncIterator()
+        #expect(await waitingIterator.next() != nil)
+        #expect(viewModel.activeVideoRecordingCaptureID == nil)
+        viewModel.cancelPendingVideoStartForLifecycle()
+        let continuation = try #require(release)
+        release = nil
+        continuation.resume()
+        #expect(await preparation.value == false)
+        await shutter.value
+        #expect(viewModel.videoPreparationTask == nil && viewModel.videoPreparationState == .idle)
+        #expect(!viewModel.isVideoRecording && viewModel.activeVideoRecordingCaptureID == nil)
+        #expect(viewModel.captureFailureID == nil, "An invalidated shutter never reaches capture validation")
+    }
+
+    @Test(.timeLimit(.minutes(1))) @MainActor
+    func firstFrameWriterFailureCannotPublishRecordingAndRetryWaitsForCancellation() async throws {
+        let directory = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = TAPPendingCaptureStore(rootURL: directory)
+        let viewModel = CameraViewModel(capabilityMatrix: CapabilityMatrix(rgbSources: [], depthCandidates: []),
+            pendingCaptureStore: store, libraryStore: LibraryMediaStore())
+        viewModel.videoPreparationState = .ready
+        let captureID = UUID().uuidString
+        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+        let (cancelling, cancellingContinuation) = AsyncStream<Void>.makeStream()
+        var releaseStart: CheckedContinuation<Void, Never>?
+        var releaseCancellation: CheckedContinuation<Void, Never>?
+        defer { releaseStart?.resume(); releaseCancellation?.resume() }
+        var workspaceURL: URL?
+        let start = Task { @MainActor in
+            await viewModel.startVideoRecording(captureID: captureID, generation: viewModel.configurationGeneration,
+                prepareAndStart: {
+                    let workspace = try await store.beginVideoCaptureWorkspace(captureID: captureID)
+                    workspaceURL = workspace.bundleURL
+                    await withCheckedContinuation { continuation in
+                        releaseStart = continuation
+                        startedContinuation.yield(())
+                        startedContinuation.finish()
+                    }
+                    return workspace.bundleURL
+                }, cancelRecording: {
+                    await withCheckedContinuation { continuation in
+                        releaseCancellation = continuation
+                        cancellingContinuation.yield(())
+                        cancellingContinuation.finish()
+                    }
+                })
+        }
+        var iterator = started.makeAsyncIterator()
+        #expect(await iterator.next() != nil)
+        viewModel.handleVideoRecordingWriterFailure(.init(captureID: "unrelated", domain: "fixture", code: 1))
+        #expect(viewModel.activeVideoRecordingCaptureID == captureID && viewModel.captureFailureID == nil)
+        viewModel.handleVideoRecordingWriterFailure(.init(captureID: captureID, domain: "fixture", code: 1))
+        let failureID = try #require(viewModel.captureFailureID)
+        #expect(viewModel.activeVideoRecordingCaptureID == nil && !viewModel.isVideoRecording)
+        #expect(viewModel.videoPreparationState == .preparing, "Keep the shutter gated until cleanup finishes")
+        let startContinuation = try #require(releaseStart)
+        releaseStart = nil
+        startContinuation.resume()
+        var cancellationIterator = cancelling.makeAsyncIterator()
+        #expect(await cancellationIterator.next() != nil)
+        #expect(viewModel.videoPreparationState == .preparing && viewModel.videoPreparationTask != nil)
+        let (waiting, waitingContinuation) = AsyncStream<Void>.makeStream()
+        var preparedAgain = false
+        let preparation = Task { @MainActor in
+            waitingContinuation.yield(())
+            waitingContinuation.finish()
+            return await viewModel.prepareVideoMode { preparedAgain = true }
+        }
+        var waitingIterator = waiting.makeAsyncIterator()
+        #expect(await waitingIterator.next() != nil)
+        #expect(!preparedAgain, "Retry waits for the cancelled native start to drain")
+        let cancellationContinuation = try #require(releaseCancellation)
+        releaseCancellation = nil
+        cancellationContinuation.resume()
+        #expect(await start.value == false)
+        #expect(await preparation.value)
+        #expect(preparedAgain && viewModel.videoPreparationState == .ready)
+        #expect(!viewModel.isVideoRecording && viewModel.videoRecordingStartedAt == nil)
+        #expect(viewModel.videoRecordingTemporaryDirectoryURL == nil)
+        #expect(!FileManager.default.fileExists(atPath: try #require(workspaceURL).path))
+        #expect(viewModel.captureFailureID == failureID, "Cancellation must not replace the original failure")
+
+        let retryID = UUID().uuidString
+        var acceptanceCount = 0
+        let retryStarted = await viewModel.startVideoRecording(captureID: retryID, generation: viewModel.configurationGeneration,
+            prepareAndStart: {
+                #expect(acceptanceCount == 1)
+                return try await store.beginVideoCaptureWorkspace(captureID: retryID).bundleURL
+            }, cancelRecording: { Issue.record("Successful retry was cancelled") },
+            onAccepted: {
+                #expect(viewModel.activeVideoRecordingCaptureID == retryID && viewModel.isPreparingVideoMode)
+                acceptanceCount += 1
+            })
+        #expect(retryStarted)
+        #expect(acceptanceCount == 1)
+        #expect(viewModel.isVideoRecording && viewModel.activeVideoRecordingCaptureID == retryID)
+        #expect(viewModel.canUseVideoShutter && viewModel.videoRecordingStartedAt != nil)
+        try await store.abortVideoCaptureWorkspace(captureID: retryID)
+    }
+
     @Test func shutterKeepsTargetModeAppearanceWhilePreparingAndPreservesRecordingSquare() {
         for mode in CameraCaptureModeOption.allCases {
             for preparing in [false, true] {
@@ -524,6 +764,46 @@ struct TAPCameraCapturePresentationTests {
         #expect(route.isLibraryPresented)
     }
 
+    @Test(.timeLimit(.minutes(1))) @MainActor
+    func cameraResumeUsesModeAfterJoinedPreparationFinishes() async throws {
+        let coordinator = CaptureLifecycleCoordinator()
+        var wantsVideo = true
+        var result: CaptureLifecycleCoordinator.LibraryReturnResult?
+        let (started, startedContinuation) = AsyncStream<Void>.makeStream()
+        var release: CheckedContinuation<Void, Never>?
+        let preparationTask = coordinator.prepareCaptureMode(
+            to: .video,
+            prepareVideoMode: {
+                await withCheckedContinuation { continuation in
+                    release = continuation
+                    startedContinuation.yield(())
+                    startedContinuation.finish()
+                }
+                return false
+            },
+            restorePhotoMode: {},
+            completion: { ready in if !ready { wantsVideo = false } }
+        )
+        let preparation = try #require(preparationTask)
+        var iterator = started.makeAsyncIterator()
+        #expect(await iterator.next() != nil)
+        let resumptionTask = coordinator.resumeCamera(
+            preparesVideoMode: { wantsVideo },
+            canResumeCamera: { true },
+            resumeIfPaused: { Issue.record("A retained camera must not restart") },
+            prepareVideoMode: { Issue.record("Failed Video selection has returned to Photo"); return false },
+            isCameraReady: { true },
+            isVideoReady: { false },
+            retryPendingCaptures: {},
+            completion: { result = $0 }
+        )
+        let resumption = try #require(resumptionTask)
+        try #require(release).resume()
+        await preparation.value
+        await resumption.value
+        #expect(result == .cameraReady && !wantsVideo)
+    }
+
     @Test @MainActor func credentialCompletionRetriesOnlyOnTheFallingEdge() async {
         let coordinator = CaptureLifecycleCoordinator()
         for wasPreparing in [false, true] {
@@ -542,18 +822,8 @@ struct TAPCameraCapturePresentationTests {
     }
 
     @Test(.timeLimit(.minutes(1))) @MainActor
-    func libraryReturnWaitsForCameraButNotPendingRecovery() async throws {
+    func cameraResumeReusesReadyResourcesAndDoesNotWaitForPendingRecovery() async throws {
         let coordinator = CaptureLifecycleCoordinator()
-        let hiddenTask = coordinator.libraryPresentationDidChange(
-            isPresented: true, preparesVideoMode: false,
-            canResumeCamera: { false },
-            resumeAfterAnalysis: { Issue.record("Opening the library must not resume the camera") },
-            prepareVideoMode: { Issue.record("Opening the library must not prepare video"); return false },
-            isCameraReady: { false },
-            retryPendingCaptures: { Issue.record("Opening the library must not retry pending captures") },
-            completion: { _ in Issue.record("Opening the library must not publish a return") }
-        )
-        #expect(hiddenTask == nil)
 
         for video in [false, true] {
             for ready in [false, true] {
@@ -561,12 +831,13 @@ struct TAPCameraCapturePresentationTests {
                 var result: CaptureLifecycleCoordinator.LibraryReturnResult?
                 let (started, startedContinuation) = AsyncStream<Void>.makeStream()
                 let (release, releaseContinuation) = AsyncStream<Void>.makeStream()
-                let requestedTask = coordinator.libraryPresentationDidChange(
-                    isPresented: false, preparesVideoMode: video,
+                let requestedTask = coordinator.resumeCamera(
+                    preparesVideoMode: { video },
                     canResumeCamera: { true },
-                    resumeAfterAnalysis: { events.append("resume") },
+                    resumeIfPaused: { events.append("resume") },
                     prepareVideoMode: { events.append("video"); return ready },
                     isCameraReady: { ready },
+                    isVideoReady: { ready },
                     retryPendingCaptures: {
                         startedContinuation.yield(())
                         startedContinuation.finish()
@@ -576,7 +847,7 @@ struct TAPCameraCapturePresentationTests {
                 )
                 let task = try #require(requestedTask)
                 await task.value
-                #expect(events == (video ? ["resume", "video"] : ["resume"]))
+                #expect(events == (ready ? [] : (video ? ["resume", "video"] : ["resume"])))
                 #expect(result == (ready ? (video ? .videoReady : .cameraReady) : .failed))
                 // Reaching this point proves recovery did not hold the return.
                 var iterator = started.makeAsyncIterator()
@@ -588,7 +859,7 @@ struct TAPCameraCapturePresentationTests {
     }
 
     @Test(.timeLimit(.minutes(1))) @MainActor
-    func cancelledOrHiddenLibraryReturnCannotPrepareOrPublishLateFailure() async throws {
+    func cancelledOrInactiveCameraResumeCannotPrepareOrPublishLateFailure() async throws {
         for suspendVideo in [false, true] {
             for cancelTask in [false, true] {
                 let coordinator = CaptureLifecycleCoordinator()
@@ -603,10 +874,10 @@ struct TAPCameraCapturePresentationTests {
                         startedContinuation.finish()
                     }
                 }
-                let requestedTask = coordinator.libraryPresentationDidChange(
-                    isPresented: false, preparesVideoMode: true,
+                let requestedTask = coordinator.resumeCamera(
+                    preparesVideoMode: { true },
                     canResumeCamera: { presentation.canResumeCamera },
-                    resumeAfterAnalysis: {
+                    resumeIfPaused: {
                         events.append("resume")
                         if !suspendVideo { await suspend() }
                     },
@@ -622,10 +893,8 @@ struct TAPCameraCapturePresentationTests {
                 let task = try #require(requestedTask)
                 var iterator = started.makeAsyncIterator()
                 #expect(await iterator.next() != nil)
-                var needsForegroundResume = false
                 if cancelTask {
-                    coordinator.suspendForInactiveScene { needsForegroundResume = true }
-                    #expect(needsForegroundResume, "Cancellation preserves an unfinished Library return")
+                    coordinator.suspendForInactiveScene()
                 } else {
                     presentation.canResumeCamera = false
                 }
@@ -639,21 +908,21 @@ struct TAPCameraCapturePresentationTests {
                 #expect(!coordinator.isChangingCaptureMode)
                 if cancelTask {
                     var recovered = false
-                    let recovery = coordinator.libraryPresentationDidChange(
-                        isPresented: false, preparesVideoMode: true,
+                    let recovery = coordinator.resumeCamera(
+                        preparesVideoMode: { true },
                         canResumeCamera: { presentation.canResumeCamera },
-                        resumeAfterAnalysis: { needsForegroundResume = false },
-                        prepareVideoMode: { true }, isCameraReady: { true }, retryPendingCaptures: {},
+                        resumeIfPaused: {},
+                        prepareVideoMode: { true }, isCameraReady: { false }, retryPendingCaptures: {},
                         completion: { recovered = $0 == .videoReady })
                     await recovery?.value
-                    #expect(recovered && !needsForegroundResume)
+                    #expect(recovered)
                 }
             }
         }
     }
 
     @Test(.timeLimit(.minutes(1)), arguments: [false, true]) @MainActor
-    func libraryReturnWaitsForRetiredPreparationAndOwnsCompletion(startsAsModeChange: Bool) async throws {
+    func cameraResumeJoinsModePreparationAndRetiresPreviousResume(startsAsModeChange: Bool) async throws {
         let coordinator = CaptureLifecycleCoordinator()
         var events: [String] = []
         let (started, startedContinuation) = AsyncStream<Void>.makeStream()
@@ -671,11 +940,11 @@ struct TAPCameraCapturePresentationTests {
         if startsAsModeChange {
             firstRequest = coordinator.prepareCaptureMode(to: .video,
                 prepareVideoMode: prepare, restorePhotoMode: {},
-                completion: { _ in Issue.record("The replaced mode change cannot publish failure") })
+                completion: { _ in events.append("mode-completion") })
         } else {
-            firstRequest = coordinator.libraryPresentationDidChange(
-                isPresented: false, preparesVideoMode: true,
-                canResumeCamera: { true }, resumeAfterAnalysis: {},
+            firstRequest = coordinator.resumeCamera(
+                preparesVideoMode: { true },
+                canResumeCamera: { true }, resumeIfPaused: {},
                 prepareVideoMode: prepare,
                 isCameraReady: { false }, retryPendingCaptures: {},
                 completion: { _ in Issue.record("The replaced return cannot publish failure") }
@@ -684,12 +953,12 @@ struct TAPCameraCapturePresentationTests {
         let first = try #require(firstRequest)
         var iterator = started.makeAsyncIterator()
         #expect(await iterator.next() != nil)
-        let replacementRequest = coordinator.libraryPresentationDidChange(
-            isPresented: false, preparesVideoMode: true,
+        let replacementRequest = coordinator.resumeCamera(
+            preparesVideoMode: { true },
             canResumeCamera: { true },
-            resumeAfterAnalysis: { events.append("current-resume") },
+            resumeIfPaused: { events.append("current-resume") },
             prepareVideoMode: { events.append("current-video"); return true },
-            isCameraReady: { true }, retryPendingCaptures: {},
+            isCameraReady: { false }, retryPendingCaptures: {},
             completion: {
                 #expect($0 == .videoReady)
                 #expect(coordinator.isChangingCaptureMode)
@@ -701,7 +970,9 @@ struct TAPCameraCapturePresentationTests {
         try #require(release).resume()
         await first.value
         await replacement.value
-        #expect(events == ["retired-video-finished", "current-resume", "current-video", "current-completion"])
+        let joinedCompletion = startsAsModeChange ? ["mode-completion"] : []
+        #expect(events == ["retired-video-finished"] + joinedCompletion
+            + ["current-resume", "current-video", "current-completion"])
         #expect(!coordinator.isChangingCaptureMode)
     }
 
