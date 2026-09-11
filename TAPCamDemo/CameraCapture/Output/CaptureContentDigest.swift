@@ -3,14 +3,13 @@
 //  TAPCamDemo
 //
 
-@preconcurrency import AVFoundation
 import CryptoKit
 import Foundation
 
 /// C2PA-aligned content binding signed by App Attest for one capture.
 ///
 /// The binding is computed from a deterministic view of the saved artifact:
-/// all format-native bytes except TAP's fixed proof slot, plus canonical TAP
+/// all format-native bytes except TAP's fixed proof slot, plus exact embedded TAP
 /// manifest payload bytes. It deliberately does not decode RGB pixels or convert
 /// Apple depth into metric Float32 samples.
 typealias CaptureContentDigest = CaptureContentBinding
@@ -19,15 +18,6 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
     static let schemaIdentifier = "urn:tapnap:tapcam:still-photo-content-binding:v1"
     static let livePhotoSchemaIdentifier = "urn:tapnap:tapcam:live-photo-content-binding:v1"
     static let videoSchemaIdentifier = "urn:tapnap:tapcam:video-content-binding:v1"
-
-    typealias LivePhotoPrimaryComponents = (
-        captureID: String,
-        capturedAt: String,
-        assetHash: AssetHash,
-        metadataHash: MetadataHash,
-        proofSlot: ProofSlot,
-        depthResource: DepthResource
-    )
 
     let schemaID: String
     let manifestSchemaID: String
@@ -61,295 +51,83 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
         self.signedResources = signedResources
     }
 
-    static func make(
-        manifest: TAPDepthManifest,
-        baseHEICData: Data,
-        depthData: AVDepthData
-    ) throws -> CaptureContentBinding {
-        try make(
-            manifest: manifest,
-            basePhotoData: baseHEICData,
-            fileContainer: .heic,
-            depthData: depthData
-        )
-    }
-
-    static func make(
-        manifest: TAPDepthManifest,
-        basePhotoData: Data,
+    static func makePhoto(
+        document: TAPManifestBindingDocument,
+        photoData: Data,
         fileContainer: CapturePhotoFileContainer,
-        depthData: AVDepthData
-    ) throws -> CaptureContentBinding {
-        try make(
-            manifest: manifest,
-            basePhotoData: basePhotoData,
-            fileContainer: fileContainer,
-            depthData: Optional(depthData)
-        )
-    }
-
-    static func make(
-        manifest: TAPDepthManifest,
-        basePhotoData: Data,
-        fileContainer: CapturePhotoFileContainer,
-        depthData: AVDepthData?,
-        rawManifestPayloadData: Data? = nil,
+        depthResource: DepthResource? = nil,
         pairedVideoURL: URL? = nil
     ) throws -> CaptureContentBinding {
-        try makeWithMetrics(
-            manifest: manifest,
-            basePhotoData: basePhotoData,
-            fileContainer: fileContainer,
-            depthData: depthData,
-            rawManifestPayloadData: rawManifestPayloadData,
-            pairedVideoURL: pairedVideoURL
-        ).digest
+        let depthResource = try depthResource ?? declaredDepthResource(document: document, isVideo: false)
+        let isLivePhoto = document.schemaID == TAPDepthManifest.livePhotoSchemaIdentifier
+        guard isLivePhoto || document.schemaID == TAPDepthManifest.schemaIdentifier else {
+            throw TAPDepthCaptureError.invalidTAPManifest("unsupported photo binding schema")
+        }
+        let slot = try TAPProofSlot.locate(in: photoData, fileContainer: fileContainer)
+        let assetHash = try AssetHash(
+            fileContainer: fileContainer, byteCount: photoData.count, slot: slot,
+            value: TAPContentBindingHash.sha256Base64URL(data: photoData, excluding: slot.containerRange)
+        )
+        let metadataHash = MetadataHash(
+            payloadData: document.rawPayloadData,
+            mediaType: isLivePhoto ? TAPDepthManifest.livePhotoPayloadMediaType : TAPDepthManifest.payloadMediaType
+        )
+        let resources = try pairedVideoURL.map {
+            try signedResources(pairedVideoURL: $0, fileContainer: fileContainer,
+                                assetHash: assetHash, metadataHash: metadataHash,
+                                payloadByteCount: document.rawPayloadData.count)
+        }
+        return CaptureContentBinding(
+            schemaID: isLivePhoto ? livePhotoSchemaIdentifier : schemaIdentifier,
+            manifestSchemaID: document.schemaID, captureID: document.captureID,
+            capturedAt: document.capturedAt, assetHash: assetHash,
+            metadataHash: metadataHash, proofSlot: ProofSlot(slot),
+            depthResource: depthResource, signedResources: resources
+        )
     }
 
-    /// Reuse only a slot located in this unchanged file during the current operation.
     static func makeVideo(
-        manifest: TAPVideoManifest,
-        rawManifestPayloadData: Data? = nil,
+        document: TAPManifestBindingDocument,
         mp4FileURL: URL,
-        validatedSlot: TAPProofSlot.FileLocation? = nil
+        validatedSlot: TAPProofSlot.FileLocation? = nil,
+        depthResource: DepthResource? = nil
     ) throws -> CaptureContentBinding {
-        try Task<Never, Never>.checkCancellation()
-        guard manifest.schema == TAPVideoManifest.Schema() else {
-            throw TAPDepthCaptureError.invalidTAPManifest("unexpected video schema metadata")
+        let depthResource = try depthResource ?? declaredDepthResource(document: document, isVideo: true)
+        let validatedSlot = try validatedSlot ?? TAPProofSlot.locateBMFF(inFileAt: mp4FileURL)
+        guard document.schemaID == TAPVideoManifest.schemaIdentifier else {
+            throw TAPDepthCaptureError.invalidTAPManifest("unsupported video binding schema")
         }
-        let slot = try validatedSlot ?? TAPProofSlot.locateBMFF(inFileAt: mp4FileURL)
         let fileHash = try TAPBMFFStreamingFile.sha256AndByteCountBase64URL(
-            of: mp4FileURL,
-            excluding: slot.containerRange
+            of: mp4FileURL, excluding: validatedSlot.containerRange
         )
         guard fileHash.byteCount <= UInt64(Int.max) else {
             throw TAPDepthCaptureError.pendingCaptureProofInvalid("video file is too large to describe")
         }
-        let assetHash = AssetHash(
-            fileContainerIdentifier: "mp4",
-            byteCount: Int(fileHash.byteCount),
-            slot: slot,
-            value: fileHash.value
-        )
-        try Task<Never, Never>.checkCancellation()
-        let payloadData = try rawManifestPayloadData
-            ?? TAPVideoManifestEncoder.payloadDataExcludingProofs(manifest.payload)
-        let metadataHash = MetadataHash(videoPayloadData: payloadData)
-
         return CaptureContentBinding(
-            schemaID: CaptureContentBinding.videoSchemaIdentifier,
-            manifestSchemaID: manifest.schema.id,
-            captureID: manifest.payload.id,
-            capturedAt: manifest.payload.capturedAt,
-            assetHash: assetHash,
-            metadataHash: metadataHash,
-            proofSlot: ProofSlot(slot),
-            depthResource: depthResource(for: manifest.payload.depthCoverage)
+            schemaID: videoSchemaIdentifier, manifestSchemaID: document.schemaID,
+            captureID: document.captureID, capturedAt: document.capturedAt,
+            assetHash: AssetHash(fileContainerIdentifier: "mp4", byteCount: Int(fileHash.byteCount),
+                                 slot: validatedSlot, value: fileHash.value),
+            metadataHash: MetadataHash(videoPayloadData: document.rawPayloadData),
+            proofSlot: ProofSlot(validatedSlot), depthResource: depthResource
         )
     }
 
-    static func makeWithMetrics(
-        manifest: TAPDepthManifest,
-        baseHEICData: Data,
-        depthData: AVDepthData
-    ) throws -> CaptureContentDigestBuildResult {
-        try makeWithMetrics(
-            manifest: manifest,
-            basePhotoData: baseHEICData,
-            fileContainer: .heic,
-            depthData: depthData
-        )
-    }
-
-    static func makeWithMetrics(
-        manifest: TAPDepthManifest,
-        basePhotoData: Data,
-        fileContainer: CapturePhotoFileContainer,
-        depthData: AVDepthData
-    ) throws -> CaptureContentDigestBuildResult {
-        try makeWithMetrics(
-            manifest: manifest,
-            basePhotoData: basePhotoData,
-            fileContainer: fileContainer,
-            depthData: Optional(depthData)
-        )
-    }
-
-    static func makeWithMetrics(
-        manifest: TAPDepthManifest,
-        basePhotoData: Data,
-        fileContainer: CapturePhotoFileContainer,
-        depthData: AVDepthData?,
-        rawManifestPayloadData: Data? = nil,
-        pairedVideoURL: URL? = nil
-    ) throws -> CaptureContentDigestBuildResult {
-        try Task<Never, Never>.checkCancellation()
-        let isLivePhoto: Bool
-        if manifest.schema == TAPDepthManifest.Schema(),
-           manifest.payload.livePhoto == nil,
-           pairedVideoURL == nil {
-            isLivePhoto = false
-        } else if manifest.schema == TAPDepthManifest.Schema.livePhoto,
-                  manifest.payload.livePhoto != nil,
-                  pairedVideoURL != nil {
-            isLivePhoto = true
-        } else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid(
-                "manifest and paired video do not identify one supported photo family"
+    private static func declaredDepthResource(
+        document: TAPManifestBindingDocument, isVideo: Bool
+    ) throws -> DepthResource {
+        let payload = try JSONSerialization.jsonObject(with: document.rawPayloadData) as? [String: Any]
+        if isVideo {
+            let count = (payload?["depthCoverage"] as? [String: Any])?["sampleCount"] as? Int ?? 0
+            return DepthResource(
+                presence: count > 0 ? "captured" : "no-samples",
+                binding: count > 0 ? "covered-by-assetHash" : "coverage-recorded-in-manifest",
+                interpretation: "not-part-of-base-signature",
+                platformPresenceCheck: "TAPVideoManifest.depthCoverage"
             )
         }
-        let payloadData = try rawManifestPayloadData
-            ?? TAPDepthManifestEncoder.payloadDataExcludingProofs(manifest.payload)
-        return try makePhotoWithMetrics(
-            manifest: manifest,
-            basePhotoData: basePhotoData,
-            fileContainer: fileContainer,
-            depthData: depthData,
-            manifestPayloadData: payloadData,
-            isLivePhoto: isLivePhoto,
-            pairedVideoURL: pairedVideoURL
-        )
-    }
-
-    /// Recomputes the signed primary-photo components when a Live Photo MOV is
-    /// unavailable. The caller must still validate the original full binding
-    /// and must not treat this result as a complete Live Photo.
-    static func makeLivePhotoPrimaryComponents(
-        manifest: TAPDepthManifest,
-        basePhotoData: Data,
-        fileContainer: CapturePhotoFileContainer,
-        depthData: AVDepthData?,
-        rawManifestPayloadData: Data? = nil
-    ) throws -> LivePhotoPrimaryComponents {
-        guard manifest.schema == TAPDepthManifest.Schema.livePhoto,
-              manifest.payload.livePhoto != nil else {
-            throw TAPDepthCaptureError.pendingCaptureProofInvalid(
-                "manifest does not identify a Live Photo"
-            )
-        }
-        let payloadData = try rawManifestPayloadData
-            ?? TAPDepthManifestEncoder.payloadDataExcludingProofs(manifest.payload)
-        let components = try makePhotoComponents(
-            manifest: manifest,
-            basePhotoData: basePhotoData,
-            fileContainer: fileContainer,
-            depthData: depthData,
-            manifestPayloadData: payloadData,
-            isLivePhoto: true,
-            pairedVideoURL: nil
-        )
-        return (
-            captureID: manifest.payload.id,
-            capturedAt: manifest.payload.capturedAt,
-            assetHash: components.assetHash,
-            metadataHash: components.metadataHash,
-            proofSlot: components.proofSlot,
-            depthResource: components.depthResource
-        )
-    }
-
-    private static func makePhotoWithMetrics(
-        manifest: TAPDepthManifest,
-        basePhotoData: Data,
-        fileContainer: CapturePhotoFileContainer,
-        depthData: AVDepthData?,
-        manifestPayloadData: Data,
-        isLivePhoto: Bool,
-        pairedVideoURL: URL?
-    ) throws -> CaptureContentDigestBuildResult {
-        let components = try makePhotoComponents(
-            manifest: manifest,
-            basePhotoData: basePhotoData,
-            fileContainer: fileContainer,
-            depthData: depthData,
-            manifestPayloadData: manifestPayloadData,
-            isLivePhoto: isLivePhoto,
-            pairedVideoURL: pairedVideoURL
-        )
-        return CaptureContentDigestBuildResult(
-            digest: CaptureContentBinding(
-                schemaID: isLivePhoto
-                    ? CaptureContentBinding.livePhotoSchemaIdentifier
-                    : CaptureContentBinding.schemaIdentifier,
-                manifestSchemaID: manifest.schema.id,
-                captureID: manifest.payload.id,
-                capturedAt: manifest.payload.capturedAt,
-                assetHash: components.assetHash,
-                metadataHash: components.metadataHash,
-                proofSlot: components.proofSlot,
-                depthResource: components.depthResource,
-                signedResources: components.signedResources
-            ),
-            metrics: components.metrics
-        )
-    }
-
-    private static func makePhotoComponents(
-        manifest: TAPDepthManifest,
-        basePhotoData: Data,
-        fileContainer: CapturePhotoFileContainer,
-        depthData: AVDepthData?,
-        manifestPayloadData: Data,
-        isLivePhoto: Bool,
-        pairedVideoURL: URL?
-    ) throws -> (
-        assetHash: AssetHash,
-        metadataHash: MetadataHash,
-        proofSlot: ProofSlot,
-        depthResource: DepthResource,
-        signedResources: [SignedResource]?,
-        metrics: CaptureContentDigestMetrics
-    ) {
-        var metrics = CaptureContentDigestMetrics()
-
-        let contentStart = Date()
-        let slot = try TAPProofSlot.locate(in: basePhotoData, fileContainer: fileContainer)
-        let assetHash = try AssetHash(
-            fileContainer: fileContainer,
-            byteCount: basePhotoData.count,
-            slot: slot,
-            value: TAPContentBindingHash.sha256Base64URL(
-                data: basePhotoData,
-                excluding: slot.containerRange
-            )
-        )
-        try Task<Never, Never>.checkCancellation()
-        metrics.rgbDigestDuration = Date().timeIntervalSince(contentStart)
-
-        let depthStart = Date()
-        let depthResource = depthResource(for: depthData == nil ? .unavailable : .available)
-        metrics.depthDigestDuration = Date().timeIntervalSince(depthStart)
-
-        let metadataStart = Date()
-        let metadataHash = MetadataHash(
-            payloadData: manifestPayloadData,
-            mediaType: isLivePhoto
-                ? TAPDepthManifest.livePhotoPayloadMediaType
-                : TAPDepthManifest.payloadMediaType
-        )
-        metrics.metadataDigestDuration = Date().timeIntervalSince(metadataStart)
-        let livePhotoSignedResources: [SignedResource]?
-        if isLivePhoto, let pairedVideoURL {
-            try Task<Never, Never>.checkCancellation()
-            livePhotoSignedResources = try signedResources(
-                pairedVideoURL: pairedVideoURL,
-                fileContainer: fileContainer,
-                assetHash: assetHash,
-                metadataHash: metadataHash,
-                payloadByteCount: manifestPayloadData.count
-            )
-        } else {
-            livePhotoSignedResources = nil
-        }
-
-        return (
-            assetHash: assetHash,
-            metadataHash: metadataHash,
-            proofSlot: ProofSlot(slot),
-            depthResource: depthResource,
-            signedResources: livePhotoSignedResources,
-            metrics: metrics
-        )
+        let availability = (payload?["depth"] as? [String: Any])?["availability"] as? String
+        return depthResource(for: availability == "available" ? .available : .unavailable)
     }
 
     private static func depthResource(for availability: CaptureDepthAvailability) -> DepthResource {
@@ -369,15 +147,6 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
                 platformPresenceCheck: "AVDepthData-readback-missing"
             )
         }
-    }
-
-    private static func depthResource(for coverage: TAPVideoManifest.DepthCoverage) -> DepthResource {
-        DepthResource(
-            presence: coverage.sampleCount > 0 ? "captured" : "no-samples",
-            binding: coverage.sampleCount > 0 ? "covered-by-assetHash" : "coverage-recorded-in-manifest",
-            interpretation: "not-part-of-base-signature",
-            platformPresenceCheck: "TAPVideoManifest.depthCoverage"
-        )
     }
 
     private static func signedResources(
@@ -555,7 +324,6 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
             self.padding = "zero-filled-after-envelope"
         }
 
-
         nonisolated init(_ slot: TAPProofSlot.FileLocation) {
             self.kind = slot.kind.rawValue
             self.offset = Int(slot.containerRange.offset)
@@ -603,17 +371,6 @@ nonisolated struct CaptureContentBinding: Codable, Equatable, Sendable {
             self.excludedRanges = excludedRanges
         }
     }
-}
-
-nonisolated struct CaptureContentDigestBuildResult: Sendable {
-    let digest: CaptureContentBinding
-    let metrics: CaptureContentDigestMetrics
-}
-
-nonisolated struct CaptureContentDigestMetrics: Equatable, Sendable {
-    var rgbDigestDuration: TimeInterval?
-    var depthDigestDuration: TimeInterval?
-    var metadataDigestDuration: TimeInterval?
 }
 
 nonisolated enum TAPContentBindingHash {

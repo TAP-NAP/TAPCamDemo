@@ -13,7 +13,6 @@ struct TAPVideoReleaseSourceGuardTests {
         "TAPCamDemo/CameraCapture/Output/TAPBMFFStreamingFile.swift",
         "TAPCamDemo/CameraCapture/Output/TAPDepthFrameCodec.swift",
         "TAPCamDemo/CameraCapture/Output/TAPDepthKLV.swift",
-        "TAPCamDemo/CameraCapture/Output/TAPVideoDepthTrackValidator.swift",
         "TAPCamDemo/CameraCapture/Output/TAPVideoManifestBox.swift",
         "TAPCamDemo/TAPLibrary/Viewer/Playback/TAPVideoPlaybackResourceLoader.swift",
         "TAPCamDemo/TAPLibrary/Viewer/Playback/TAPVideoPlaybackSession.swift",
@@ -85,7 +84,7 @@ struct TAPVideoReleaseSourceGuardTests {
         let makeVideoSource = try #require(TAPCamDemoTestSourceInspection.substring(
             in: digestSource,
             from: "    static func makeVideo(",
-            to: "    static func makeWithMetrics("
+            to: "    private static func declaredDepthResource("
         ))
         #expect(!Self.matches(Self.wholeFileDataPattern, in: makeVideoSource))
         for forbiddenLegacyAPI in [
@@ -128,7 +127,7 @@ struct TAPVideoReleaseSourceGuardTests {
         let makeVideoSource = try #require(TAPCamDemoTestSourceInspection.substring(
             in: digestSource,
             from: "    static func makeVideo(",
-            to: "    static func makeWithMetrics("
+            to: "    private static func declaredDepthResource("
         ))
         #expect(!Self.matches(Self.explicitlyVideoNamedSubdataPattern, in: makeVideoSource))
         for pattern in Self.nearWholeDataSubdataPatterns {

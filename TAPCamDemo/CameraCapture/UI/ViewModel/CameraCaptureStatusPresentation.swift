@@ -49,8 +49,6 @@ nonisolated enum CameraCaptureStatusPresentation {
             return "The current session configuration does not support depth photo delivery."
         case .unsupportedZoomFactor:
             return "The selected zoom factor does not support depth delivery on this camera."
-        case .missingDepthData:
-            return "The captured photo did not include depth data."
         case .photoLibraryAccessDenied:
             return "Photo library access is required to save into the TAPCamDepth album."
         case .albumCreationFailed:

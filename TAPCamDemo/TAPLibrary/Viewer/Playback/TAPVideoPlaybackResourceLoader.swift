@@ -93,11 +93,9 @@ nonisolated final class TAPVideoOriginalResourceLease: @unchecked Sendable {
 
 nonisolated struct TAPVideoLocalIntegrityResult: Equatable, Sendable {
     let captureID: String
-    let packageID: UUID
 }
 
 nonisolated enum TAPVideoLocalIntegrityError: Error, Equatable, Sendable {
-    case missingEmbeddedIdentity
     case expectedCaptureIDMismatch
     case expectedPackageIDMismatch
 }
@@ -123,32 +121,24 @@ nonisolated struct TAPVideoLocalIntegrityValidator: Sendable {
     ) async throws -> TAPVideoLocalIntegrityResult {
         try Task<Never, Never>.checkCancellation()
         let input = try TAPVideoValidationInput(fileURL: resource.fileURL)
-        let manifest = input.manifestDocument.manifest
+        let document = input.manifestDocument
         try Task<Never, Never>.checkCancellation()
-        guard !manifest.payload.id.isEmpty,
-              let embeddedPackageID = UUID(uuidString: manifest.payload.packageID) else {
-            throw TAPVideoLocalIntegrityError.missingEmbeddedIdentity
-        }
         if let expectedCaptureID,
-           expectedCaptureID != manifest.payload.id {
+           expectedCaptureID != document.captureID {
             throw TAPVideoLocalIntegrityError.expectedCaptureIDMismatch
         }
         if let expectedPackageID,
-           expectedPackageID != embeddedPackageID {
+           expectedPackageID != document.packageID.flatMap(UUID.init(uuidString:)) {
             throw TAPVideoLocalIntegrityError.expectedPackageIDMismatch
         }
 
         _ = try await provenanceWriter.validateSignedExportVideoFile(
             input,
-            expectedCaptureID: expectedCaptureID ?? manifest.payload.id,
-            expectedPackageID: expectedPackageID ?? embeddedPackageID,
-            validatesDepthTrack: false
+            expectedCaptureID: expectedCaptureID ?? document.captureID,
+            expectedPackageID: expectedPackageID
         )
         try Task<Never, Never>.checkCancellation()
-        return TAPVideoLocalIntegrityResult(
-            captureID: manifest.payload.id,
-            packageID: embeddedPackageID
-        )
+        return TAPVideoLocalIntegrityResult(captureID: document.captureID)
     }
 }
 

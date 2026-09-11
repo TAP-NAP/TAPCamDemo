@@ -471,8 +471,7 @@ nonisolated enum PhotoLibraryWriter {
                 let input = try TAPPhotoValidationInput(data: data)
                 _ = try provenanceWriter.validateSignedExportPhoto(
                     input,
-                    expectedCaptureID: captureID,
-                    expectedProfile: input.inferredProfile
+                    expectedCaptureID: captureID
                 )
                 try Task.checkCancellation()
             } catch let error as CancellationError {

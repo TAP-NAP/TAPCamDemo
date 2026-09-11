@@ -1050,11 +1050,10 @@ private actor RecordingVideoExportActions {
         PhotoLibraryPendingVideoExportActions(
             validateLocalFile: { fileURL, _ in
                 ValidatedTAPVideoFile(
-                    fileURL: fileURL,
-                    manifest: try TAPVideoManifestBox.decodedManifest(fromFileAt: fileURL)
+                    fileURL: fileURL
                 )
             },
-            saveVideoFile: { _, record, _, commitWillBegin in
+            saveVideoFile: { _, record, commitWillBegin in
                 try await self.recordSave(
                     record.captureID,
                     commitWillBegin: commitWillBegin

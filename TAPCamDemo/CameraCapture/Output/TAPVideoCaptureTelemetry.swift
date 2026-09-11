@@ -66,48 +66,6 @@ nonisolated struct TAPVideoCaptureTelemetry: Codable, Equatable, Sendable {
     var schema = Schema()
     let filtering: Filtering
     var motion: Motion
-
-    func validate(manifest: TAPVideoManifest) throws {
-        let maximumCount = 9_007_199_254_740_991
-        let (delivered, overflow) = filtering.filteredSampleCount
-            .addingReportingOverflow(filtering.unfilteredSampleCount)
-        guard schema == Schema(), !overflow,
-              [filtering.filteredSampleCount, filtering.unfilteredSampleCount,
-               motion.droppedSampleCount, motion.errorCount].allSatisfy({ (0...maximumCount).contains($0) }),
-              delivered == manifest.payload.depthCoverage.deliveredSampleCount,
-              motion.referenceFrame == "xArbitraryZVertical",
-              motion.deviceCoordinateSystem == "core-motion-device-right-handed",
-              motion.timeBase == "capture-relative-seconds",
-              motion.sampleIntervalSeconds.isFinite, motion.sampleIntervalSeconds > 0,
-              motion.sampleIntervalSeconds <= 1,
-              motion.samples.count <= TAPVideoCaptureTelemetryBox.maximumSampleCount,
-              motion.motionToCaptureOffsetSeconds.map(\.isFinite) ?? true else {
-            throw TAPDepthCaptureError.invalidTAPManifest("invalid capture telemetry facts")
-        }
-        let hasSamples = !motion.samples.isEmpty
-        let hasLoss = motion.droppedSampleCount > 0 || motion.errorCount > 0
-        let validStatus: Bool
-        switch motion.status {
-        case .available: validStatus = hasSamples && !hasLoss
-        case .partial: validStatus = hasSamples && hasLoss
-        case .noSamples: validStatus = !hasSamples && motion.errorCount == 0
-        case .unavailable: validStatus = !hasSamples
-        }
-        guard validStatus, !hasSamples || motion.motionToCaptureOffsetSeconds != nil else {
-            throw TAPDepthCaptureError.invalidTAPManifest("inconsistent motion availability")
-        }
-        var previousTime = -Double.infinity
-        let duration = manifest.payload.container.durationSeconds
-        let tolerance = 1 / Double(max(manifest.payload.container.timeScale, 1))
-        for sample in motion.samples {
-            guard sample.hasValidMeasurements, sample.ptsSeconds >= 0,
-                  sample.ptsSeconds > previousTime,
-                  sample.ptsSeconds <= duration + tolerance else {
-                throw TAPDepthCaptureError.invalidTAPManifest("invalid motion sample or timeline")
-            }
-            previousTime = sample.ptsSeconds
-        }
-    }
 }
 
 nonisolated enum TAPVideoCaptureTelemetryBox {
@@ -117,11 +75,9 @@ nonisolated enum TAPVideoCaptureTelemetryBox {
 
     static func append(
         _ telemetry: TAPVideoCaptureTelemetry,
-        manifest: TAPVideoManifest,
         to fileURL: URL
     ) throws {
         var telemetry = telemetry
-        try telemetry.validate(manifest: manifest)
         let layout = try TAPVideoContainerLayout.read(from: fileURL)
         guard !layout.topLevelBoxes.contains(where: { $0.userType == uuid }),
               layout.topLevelBoxes.last?.usesToEndSize != true else {
@@ -140,7 +96,6 @@ nonisolated enum TAPVideoCaptureTelemetryBox {
             }
             payload = try JSONEncoder.tapCaptureCanonical.encode(telemetry)
         }
-        try telemetry.validate(manifest: manifest)
         guard payload.count <= maximumByteCount else {
             throw TAPDepthCaptureError.invalidTAPManifest("capture telemetry exceeds bounded payload limit")
         }
@@ -150,58 +105,5 @@ nonisolated enum TAPVideoCaptureTelemetryBox {
         box.append(uuid)
         box.append(payload)
         try TAPBMFFStreamingFile.append(box, to: fileURL)
-    }
-
-    static func read(
-        from fileURL: URL,
-        manifest: TAPVideoManifest,
-        layout: TAPVideoContainerLayout? = nil
-    ) throws -> TAPVideoCaptureTelemetry? {
-        let layout = try layout ?? TAPVideoContainerLayout.read(from: fileURL)
-        let boxes = layout.topLevelBoxes.filter { $0.type == "uuid" && $0.userType == uuid }
-        guard !boxes.isEmpty else { return nil }
-        guard boxes.count == 1, let box = boxes.first else {
-            throw TAPDepthCaptureError.invalidTAPManifest("duplicate capture telemetry box")
-        }
-        let data = try TAPBMFFStreamingFile.read(box.payloadRange, from: fileURL, maximumByteCount: maximumByteCount)
-        let telemetry = try JSONDecoder().decode(TAPVideoCaptureTelemetry.self, from: data)
-        // Compare structure and lexical rules without requiring one particular
-        // decimal spelling for measured numbers. The signed bytes stay intact.
-        guard try normalizedNumberTokens(JSONEncoder.tapCaptureCanonical.encode(telemetry))
-                == normalizedNumberTokens(data) else {
-            throw TAPDepthCaptureError.invalidTAPManifest("capture telemetry must use its exact canonical schema")
-        }
-        try telemetry.validate(manifest: manifest)
-        return telemetry
-    }
-
-    private static func normalizedNumberTokens(_ data: Data) throws -> String {
-        guard !data.starts(with: [0xEF, 0xBB, 0xBF]),
-              let text = String(data: data, encoding: .utf8) else {
-            throw TAPDepthCaptureError.invalidUTF8Manifest
-        }
-        let tokens = try NSRegularExpression(pattern: #""(?:[^"\\]|\\.)*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?"#)
-        let source = text as NSString
-        var previousString = ""
-        var result = ""
-        var cursor = 0
-        let integerKeys: Set<String> = ["\"version\"", "\"filteredSampleCount\"", "\"unfilteredSampleCount\"", "\"droppedSampleCount\"", "\"errorCount\""]
-        for match in tokens.matches(in: text, range: NSRange(location: 0, length: source.length)) {
-            result += source.substring(with: NSRange(location: cursor, length: match.range.location - cursor))
-            let token = source.substring(with: match.range)
-            if token.first == "\"" {
-                previousString = token
-                result += token
-            } else if integerKeys.contains(previousString) {
-                result += token
-            } else if let value = Double(token), value.isFinite {
-                result += String(value)
-            } else {
-                throw TAPDepthCaptureError.invalidTAPManifest("nonfinite telemetry number")
-            }
-            cursor = NSMaxRange(match.range)
-        }
-        result += source.substring(from: cursor)
-        return result
     }
 }

@@ -581,3 +581,18 @@ nonisolated struct TAPCaptureProof: Codable, Equatable, Sendable {
     let createdAt: String?
     let value: String?
 }
+
+// The excluded proof slot's timestamp is descriptive, not part of the binding.
+// Keep producer encoding unchanged; verification uses contentDigest.capturedAt.
+extension TAPCaptureProof {
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            type: try container.decode(String.self, forKey: .type),
+            algorithm: try container.decode(String.self, forKey: .algorithm),
+            keyID: try container.decodeIfPresent(String.self, forKey: .keyID),
+            createdAt: try? container.decode(String.self, forKey: .createdAt),
+            value: try container.decodeIfPresent(String.self, forKey: .value)
+        )
+    }
+}

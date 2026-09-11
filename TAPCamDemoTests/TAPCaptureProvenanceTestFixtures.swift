@@ -23,8 +23,7 @@ enum TAPCaptureProvenanceTestFixtures {
     }
 
     static func sampleSignedHEICData(
-        manifest: TAPDepthManifest,
-        hasDepth: Bool
+        manifest: TAPDepthManifest
     ) throws -> Data {
         let sourceHEIC = try sampleHEICSourceData()
         let manifestWithoutProofBody = TAPDepthManifest(payload: manifest.payload)
@@ -37,13 +36,6 @@ enum TAPCaptureProvenanceTestFixtures {
                 into: signedHEIC,
                 fileContainer: .heic
             )
-        }
-        if hasDepth {
-            /*
-             This fixture intentionally has no Apple auxiliary depth plane.
-             Tests that pass `hasDepth: true` only exercise validation checks
-             that run before depth readback, such as manifest/proof rejection.
-             */
         }
         return signedHEIC
     }

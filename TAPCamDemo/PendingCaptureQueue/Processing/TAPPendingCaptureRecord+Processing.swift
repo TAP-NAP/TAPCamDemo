@@ -79,8 +79,6 @@ nonisolated extension TAPPendingCaptureRecord {
         }
 
         switch captureError {
-        case .missingDepthData:
-            return .missingDepthData
         case .pendingCaptureProofExternalMutation:
             return .proofExternalMutation
         case .pendingCaptureProofInvalid,

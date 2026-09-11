@@ -108,7 +108,7 @@ nonisolated struct TAPDepthPhotoFileWriteResult: Sendable {
 nonisolated struct TAPPhotoValidationInput: Sendable {
     let data: Data
     let fileContainer: CapturePhotoFileContainer
-    let manifestDocument: TAPDepthManifestDocument
+    let manifestDocument: TAPManifestBindingDocument
 
     init(data: Data, expectedContainer: CapturePhotoFileContainer? = nil) throws {
         try Task<Never, Never>.checkCancellation()
@@ -118,17 +118,11 @@ nonisolated struct TAPPhotoValidationInput: Sendable {
         }
         self.data = data
         fileContainer = container
-        manifestDocument = try TAPDepthPhotoFileReader.decodedManifestDocument(from: data)
-    }
-
-    var inferredProfile: CaptureOutputProfile {
-        CaptureOutputProfile.releasePhotoDepthProfile(
-            fileContainer: fileContainer,
-            photoQualityLevel: CapturePhotoQualityLevel(
-                rawValue: manifestDocument.manifest.payload.capture.photoQualityPrioritization
-            ) ?? .quality
+        manifestDocument = try TAPManifestBindingDocument(
+            data: Data(TAPDepthPhotoFileReader.manifestJSON(from: data).utf8)
         )
     }
+
 }
 
 /// Minimal readback API for app-side verification and analysis.

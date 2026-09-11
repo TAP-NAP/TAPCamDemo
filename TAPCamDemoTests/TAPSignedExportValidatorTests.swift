@@ -18,8 +18,7 @@ struct TAPSignedExportValidatorTests {
         do {
             _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
                 .init(data: signedData, expectedContainer: .heic),
-                expectedCaptureID: "sample-capture",
-                expectedProfile: .releasePhotoDepthHEIC
+                expectedCaptureID: "sample-capture"
             )
             Issue.record("Expected final export validation to reject JPEG-backed data.")
         } catch TAPDepthCaptureError.invalidHEICContainerType(let actual) {
@@ -33,8 +32,7 @@ struct TAPSignedExportValidatorTests {
         do {
             _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
                 .init(data: TAPCamDemoTestFixtures.sampleThumbnailSourceData(), expectedContainer: .heic),
-                expectedCaptureID: "sample-capture",
-                expectedProfile: .releasePhotoDepthHEIC
+                expectedCaptureID: "sample-capture"
             )
             Issue.record("Expected final export validation to reject raw JPEG data.")
         } catch TAPDepthCaptureError.invalidHEICContainerType(let actual) {
@@ -44,43 +42,16 @@ struct TAPSignedExportValidatorTests {
         }
     }
 
-    @Test func captureOutputManifestPolicyRejectsReleaseFactDrift() throws {
-        let policy = CaptureOutputManifestPolicy.releasePhotoDepthHEIC
-        let releaseCapture = TAPCamDemoTestFixtures.sampleManifestCapture()
-        let driftedCapture = TAPCamDemoTestFixtures.sampleManifestCapture(
-            requestedCodec: AVVideoCodecType.jpeg.rawValue,
-            depthDataFiltered: false
-        )
-
-        #expect(policy.violations(in: releaseCapture).isEmpty)
-        #expect(policy.violations(in: driftedCapture) == [
-            .requestedCodec,
-            .depthDataFiltered
-        ])
-
-        do {
-            try policy.validate(driftedCapture)
-            Issue.record("Expected manifest policy to reject Release output fact drift.")
-        } catch TAPDepthCaptureError.invalidCaptureOutputProfile(let reason) {
-            #expect(reason.contains("requestedCodec"))
-            #expect(reason.contains("depthDataFiltered"))
-        } catch {
-            Issue.record("Unexpected manifest policy validation error: \(error)")
-        }
-    }
-
     @Test func signedExportValidatorRejectsMissingProofAfterContainerCheck() throws {
         let manifest = TAPDepthManifest(payload: TAPCamDemoTestFixtures.samplePayload(location: nil))
         let signedHEICData = try TAPCaptureProvenanceTestFixtures.sampleSignedHEICData(
-            manifest: manifest,
-            hasDepth: true
+            manifest: manifest
         )
 
         do {
             _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
                 .init(data: signedHEICData, expectedContainer: .heic),
-                expectedCaptureID: "sample-capture",
-                expectedProfile: .releasePhotoDepthHEIC
+                expectedCaptureID: "sample-capture"
             )
             Issue.record("Expected final export validation to reject missing proof.")
         } catch TAPDepthCaptureError.pendingCaptureProofMissing {
@@ -104,15 +75,13 @@ struct TAPSignedExportValidatorTests {
             ]
         )
         let signedHEICData = try TAPCaptureProvenanceTestFixtures.sampleSignedHEICData(
-            manifest: manifest,
-            hasDepth: true
+            manifest: manifest
         )
 
         do {
             _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
                 .init(data: signedHEICData, expectedContainer: .heic),
-                expectedCaptureID: "sample-capture",
-                expectedProfile: .releasePhotoDepthHEIC
+                expectedCaptureID: "sample-capture"
             )
             Issue.record("Expected final export validation to reject invalid proof envelope.")
         } catch TAPDepthCaptureError.pendingCaptureProofInvalid(let reason) {
@@ -122,59 +91,16 @@ struct TAPSignedExportValidatorTests {
         }
     }
 
-    @Test func signedExportValidatorRejectsManifestProofBodiesBeforePhotosSave() throws {
-        let signedManifest = try TAPCaptureProvenanceTestFixtures.sampleSignedManifest()
-        let proof = try #require(signedManifest.proofs.first)
-        let futureProof = TAPDepthManifest.Proof(
-            type: "c2paPlaceholder",
-            algorithm: "future.provenance.placeholder",
-            keyID: "future-key",
-            createdAt: proof.createdAt,
-            value: "future-proof"
-        )
-        let proofSets = [
-            [proof, futureProof],
-            [futureProof, proof],
-            [proof, proof]
-        ]
-
-        for proofSet in proofSets {
-            let manifestWithMultipleProofs = TAPDepthManifest(
-                payload: signedManifest.payload,
-                proofs: proofSet
-            )
-            let signedHEICData = try TAPDepthPhotoFileWriter.injectingManifest(
-                manifestWithMultipleProofs,
-                into: TAPCaptureProvenanceTestFixtures.sampleHEICSourceData()
-            )
-
-            do {
-                _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
-                    .init(data: signedHEICData, expectedContainer: .heic),
-                    expectedCaptureID: "sample-capture",
-                    expectedProfile: .releasePhotoDepthHEIC
-                )
-                Issue.record("Expected final export validation to reject manifest proof bodies.")
-            } catch TAPDepthCaptureError.pendingCaptureProofInvalid(let reason) {
-                #expect(reason.contains("manifest proofs"))
-            } catch {
-                Issue.record("Unexpected final export validation error: \(error)")
-            }
-        }
-    }
-
     @Test func signedExportValidatorRejectsManifestMismatchAfterContainerCheck() throws {
         let manifest = try TAPCaptureProvenanceTestFixtures.sampleSignedManifest(id: "embedded-capture")
         let signedHEICData = try TAPCaptureProvenanceTestFixtures.sampleSignedHEICData(
-            manifest: manifest,
-            hasDepth: true
+            manifest: manifest
         )
 
         do {
             _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
                 .init(data: signedHEICData, expectedContainer: .heic),
-                expectedCaptureID: "record-capture",
-                expectedProfile: .releasePhotoDepthHEIC
+                expectedCaptureID: "record-capture"
             )
             Issue.record("Expected final export validation to reject manifest mismatch.")
         } catch TAPDepthCaptureError.pendingCaptureManifestIDMismatch(let expected, let actual) {
@@ -185,76 +111,40 @@ struct TAPSignedExportValidatorTests {
         }
     }
 
-    @Test func signedExportValidatorRejectsReleaseOutputPolicyDriftBeforePhotosSave() throws {
-        let driftedCaptures: [(TAPDepthManifest.Capture, String)] = [
-            (
-                TAPCamDemoTestFixtures.sampleManifestCapture(requestedCodec: AVVideoCodecType.jpeg.rawValue),
-                "requestedCodec"
-            ),
-            (
-                TAPCamDemoTestFixtures.sampleManifestCapture(depthDataDeliveryEnabled: false),
-                "depthDataDeliveryEnabled"
-            ),
-            (
-                TAPCamDemoTestFixtures.sampleManifestCapture(embedsDepthDataInPhoto: false),
-                "embedsDepthDataInPhoto"
-            ),
-            (
-                TAPCamDemoTestFixtures.sampleManifestCapture(depthDataFiltered: false),
-                "depthDataFiltered"
-            ),
-            (
-                TAPCamDemoTestFixtures.sampleManifestCapture(photoQualityPrioritization: "balanced"),
-                "photoQualityPrioritization"
-            )
-        ]
-
-        for (capture, expectedReasonToken) in driftedCaptures {
-            let manifest = TAPDepthManifest(payload: TAPCamDemoTestFixtures.samplePayload(
-                location: nil,
-                capture: capture
-            ))
-            let signedHEICData = try TAPCaptureProvenanceTestFixtures.sampleSignedHEICData(
-                manifest: manifest,
-                hasDepth: true
-            )
-
-            do {
-                _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
-                    .init(data: signedHEICData, expectedContainer: .heic),
-                    expectedCaptureID: "sample-capture",
-                    expectedProfile: .releasePhotoDepthHEIC
-                )
-                Issue.record("Expected final export validation to reject output policy drift.")
-            } catch TAPDepthCaptureError.invalidCaptureOutputProfile(let reason) {
-                #expect(reason.contains(expectedReasonToken))
-            } catch {
-                Issue.record("Unexpected final export validation error: \(error)")
-            }
-        }
-    }
-
-    @Test func signedExportValidatorRejectsMissingAuxiliaryDepthAfterContainerCheck() throws {
-        let signedHEICData = try TAPCaptureProvenanceTestFixtures.sampleSignedHEICData(
-            manifest: try TAPCaptureProvenanceTestFixtures.sampleSignedManifest(),
-            hasDepth: false
+    @Test func signingAndExportPreserveCaptureDeclarationsWithoutRequiringDepth() async throws {
+        let capture = TAPCamDemoTestFixtures.sampleManifestCapture(
+            requestedCodec: AVVideoCodecType.jpeg.rawValue,
+            depthDataDeliveryEnabled: false,
+            embedsDepthDataInPhoto: false,
+            depthDataFiltered: false,
+            depthAvailability: .unavailable,
+            photoQualityPrioritization: "balanced"
         )
-
-        do {
-            _ = try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
-                .init(data: signedHEICData, expectedContainer: .heic),
-                expectedCaptureID: "sample-capture",
-                expectedProfile: .releasePhotoDepthHEIC
-            )
-            Issue.record("Expected final export validation to reject missing auxiliary depth.")
-        } catch TAPDepthCaptureError.missingDepthData {
-            #expect(Bool(true))
-        } catch {
-            Issue.record("Unexpected final export validation error: \(error)")
-        }
+        // The declaration may disagree with the file and with other metadata.
+        // The signature covers those recorded bytes without certifying depth.
+        let manifest = TAPDepthManifest(payload: TAPCamDemoTestFixtures.samplePayload(
+            location: nil, capture: capture, depthAvailability: .available
+        ))
+        let unsignedData = try TAPDepthPhotoFileWriter.injectingManifest(
+            manifest, into: TAPCaptureProvenanceTestFixtures.sampleHEICSourceData()
+        )
+        let signer = SuccessfulCaptureAssertionSigner()
+        let writer = TAPCaptureProvenanceWriter()
+        let signedPhoto = try await writer.signedPhotoData(
+            from: unsignedData, expectedCaptureID: "sample-capture",
+            expectedContainer: .heic, assertionSigner: signer
+        )
+        let validated = try writer.validateSignedExportPhoto(
+            .init(data: signedPhoto.data, expectedContainer: .heic),
+            expectedCaptureID: "sample-capture"
+        )
+        #expect((try TAPDepthPhotoFileReader.decodedManifest(from: validated.data)).payload.capture == capture)
+        #expect((try TAPDepthPhotoFileReader.decodedManifest(from: validated.data)).payload.depth.availability == .available)
+        #expect(try TAPDepthPhotoFileReader.depthData(from: validated.data) == nil)
+        #expect(await signer.lastDigest()?.depthResource.presence == "required")
     }
 
-    @Test func pendingSigningAndExportValidationAllowNoDepthCapture() async throws {
+    @Test func noDepthPhotoIgnoresOuterProofTimeButRejectsBoundTimeMutation() async throws {
         let payload = TAPCamDemoTestFixtures.samplePayload(
             location: nil,
             capture: TAPCamDemoTestFixtures.sampleManifestCapture(depthAvailability: .unavailable),
@@ -270,23 +160,38 @@ struct TAPSignedExportValidatorTests {
         let signedPhoto = try await writer.signedPhotoData(
             from: unsignedData,
             expectedCaptureID: "sample-capture",
-            expectedProfile: .releasePhotoDepthHEIC,
+            expectedContainer: .heic,
             assertionSigner: signer
         )
         let validated = try writer.validateSignedExportPhoto(
             .init(data: signedPhoto.data, expectedContainer: .heic),
-            expectedCaptureID: "sample-capture",
-            expectedProfile: .releasePhotoDepthHEIC
+            expectedCaptureID: "sample-capture"
         )
+        for outerTimestamp in ["unbound-time", nil, 7] as [Any?] {
+            let changed = try Self.rewritingOuterProofTimestamp(
+                signedPhoto.data, value: outerTimestamp
+            )
+            _ = try writer.validateSignedExportPhoto(
+                .init(data: changed, expectedContainer: .heic), expectedCaptureID: "sample-capture"
+            )
+        }
+        var changedManifestTime = signedPhoto.data
+        let timeRange = try #require(changedManifestTime.range(of: Data(payload.capturedAt.utf8)))
+        changedManifestTime[timeRange.lowerBound] = 0x33
+        #expect(throws: TAPDepthCaptureError.self) {
+            try writer.validateSignedExportPhoto(
+                .init(data: changedManifestTime, expectedContainer: .heic), expectedCaptureID: "sample-capture"
+            )
+        }
         let digest = try #require(await signer.lastDigest())
 
-        #expect(validated.manifest.payload.capture.depthAvailability == .unavailable)
-        #expect(validated.manifest.payload.depth.availability == .unavailable)
+        #expect((try TAPDepthPhotoFileReader.decodedManifest(from: validated.data)).payload.capture.depthAvailability == .unavailable)
+        #expect((try TAPDepthPhotoFileReader.decodedManifest(from: validated.data)).payload.depth.availability == .unavailable)
         #expect(digest.depthResource.presence == "unavailable")
         #expect(digest.depthResource.binding == "not-present")
     }
 
-    @Test func livePhotoPrimaryValidatorAcceptsSignedPrimaryWhenMovieIsUnavailable() async throws {
+    @Test func livePhotoValidatorsIgnoreOuterProofTimeAndAllowPrimaryWithoutMovie() async throws {
         let livePhoto = TAPDepthManifest.LivePhoto(
             presence: "paired-video",
             pairedVideoFilename: "paired-video.mov",
@@ -317,18 +222,29 @@ struct TAPSignedExportValidatorTests {
         let signedPhoto = try await writer.signedPhotoData(
             from: unsignedData,
             expectedCaptureID: "sample-capture",
-            expectedProfile: .releasePhotoDepthHEIC,
+            expectedContainer: .heic,
             assertionSigner: signer,
             pairedVideoURL: movieURL
         )
         let validatedPrimary = try writer.validateSignedExportLivePhotoPrimaryPhoto(
             signedPhoto.data,
-            expectedCaptureID: "sample-capture",
-            expectedProfile: .releasePhotoDepthHEIC
+            expectedCaptureID: "sample-capture"
         )
 
-        #expect(validatedPrimary.manifest.schema == .livePhoto)
-        #expect(validatedPrimary.manifest.payload.livePhoto == livePhoto)
+        for outerTimestamp in ["unbound-time", nil] as [String?] {
+            let changed = try Self.rewritingOuterProofTimestamp(
+                signedPhoto.data, value: outerTimestamp
+            )
+            _ = try writer.validateSignedExportLivePhotoPrimaryPhoto(
+                changed, expectedCaptureID: "sample-capture"
+            )
+            _ = try writer.validateSignedExportLivePhoto(
+                .init(data: changed, expectedContainer: .heic), pairedVideoURL: movieURL,
+                expectedCaptureID: "sample-capture"
+            )
+        }
+        #expect((try TAPDepthPhotoFileReader.decodedManifest(from: validatedPrimary.data)).schema == .livePhoto)
+        #expect((try TAPDepthPhotoFileReader.decodedManifest(from: validatedPrimary.data)).payload.livePhoto == livePhoto)
     }
 
     @Test func jpegSigningAndExportValidationPreserveHighPrecisionLocationMetadataHash() async throws {
@@ -351,25 +267,33 @@ struct TAPSignedExportValidatorTests {
         let signedPhoto = try await writer.signedPhotoData(
             from: unsignedData,
             expectedCaptureID: "sample-capture",
-            expectedProfile: .releasePhotoDepthJPEG,
+            expectedContainer: .jpeg,
             assertionSigner: signer
         )
         let validated = try writer.validateSignedExportPhoto(
             .init(data: signedPhoto.data, expectedContainer: .jpeg),
-            expectedCaptureID: "sample-capture",
-            expectedProfile: .releasePhotoDepthJPEG
+            expectedCaptureID: "sample-capture"
         )
         let signedDigest = try #require(await signer.lastDigest())
         let roundTrippedMetadataHash = try CaptureContentDigest.MetadataHash(
-            payload: validated.manifest.payload
+            payload: (try TAPDepthPhotoFileReader.decodedManifest(from: validated.data)).payload
         )
 
         #expect(signedPhoto.fileContainer == .jpeg)
         #expect(validated.fileContainer == .jpeg)
-        #expect(validated.manifest.payload.location == location)
+        #expect((try TAPDepthPhotoFileReader.decodedManifest(from: validated.data)).payload.location == location)
         #expect(signedDigest.assetHash.fileContainer == CapturePhotoFileContainer.jpeg.rawValue)
         #expect(signedDigest.metadataHash == roundTrippedMetadataHash)
     }
+    private static func rewritingOuterProofTimestamp(_ photoData: Data, value: Any?) throws -> Data {
+        let envelope = try TAPProofSlot.proofEnvelopeData(from: photoData, fileContainer: .heic)
+        var proof = try #require(JSONSerialization.jsonObject(with: envelope) as? [String: Any])
+        proof["createdAt"] = value
+        return try TAPProofSlot.writeProofEnvelope(
+            JSONSerialization.data(withJSONObject: proof), into: photoData, fileContainer: .heic
+        )
+    }
+
 }
 
 private actor SuccessfulCaptureAssertionSigner: CaptureAssertionSigning {

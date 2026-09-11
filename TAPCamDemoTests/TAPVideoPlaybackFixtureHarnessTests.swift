@@ -134,62 +134,7 @@ struct TAPVideoPlaybackFixtureHarnessTests {
                     from: CMFormatDescriptionGetMediaSubType(metadataDescription)
                 )
         )
-        try await TAPVideoDepthTrackValidator.validate(
-            fileURL: artifact.fileURL,
-            manifest: artifact.manifest
-        )
 
-        var manifestObject = try #require(
-            try JSONSerialization.jsonObject(
-                with: TAPVideoManifestEncoder.manifestData(artifact.manifest)
-            ) as? [String: Any]
-        )
-        var payloadObject = try #require(manifestObject["payload"] as? [String: Any])
-        var depthCoverageObject = try #require(
-            payloadObject["depthCoverage"] as? [String: Any]
-        )
-        depthCoverageObject["sampleCount"] = artifact.manifest.payload.depthCoverage.sampleCount + 1
-        payloadObject["depthCoverage"] = depthCoverageObject
-        manifestObject["payload"] = payloadObject
-        let mismatchedManifest = try JSONDecoder().decode(
-            TAPVideoManifest.self,
-            from: JSONSerialization.data(withJSONObject: manifestObject)
-        )
-        await #expect(throws: TAPDepthCaptureError.self) {
-            try await TAPVideoDepthTrackValidator.validate(
-                fileURL: artifact.fileURL,
-                manifest: mismatchedManifest
-            )
-        }
-
-        manifestObject = try #require(
-            try JSONSerialization.jsonObject(
-                with: TAPVideoManifestEncoder.manifestData(artifact.manifest)
-            ) as? [String: Any]
-        )
-        payloadObject = try #require(manifestObject["payload"] as? [String: Any])
-        var registrationObject = try #require(
-            payloadObject["spatialRegistration"] as? [String: Any]
-        )
-        var calibrationCoverageObject = try #require(
-            registrationObject["calibrationCoverage"] as? [String: Any]
-        )
-        calibrationCoverageObject["indexedSampleCount"] = artifact.manifest.payload
-            .depthCoverage.sampleCount - 1
-        calibrationCoverageObject["missingCalibrationSampleCount"] = 1
-        registrationObject["calibrationCoverage"] = calibrationCoverageObject
-        payloadObject["spatialRegistration"] = registrationObject
-        manifestObject["payload"] = payloadObject
-        let mismatchedCalibrationCoverageManifest = try JSONDecoder().decode(
-            TAPVideoManifest.self,
-            from: JSONSerialization.data(withJSONObject: manifestObject)
-        )
-        await #expect(throws: TAPDepthCaptureError.self) {
-            try await TAPVideoDepthTrackValidator.validate(
-                fileURL: artifact.fileURL,
-                manifest: mismatchedCalibrationCoverageManifest
-            )
-        }
     }
 }
 #endif

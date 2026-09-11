@@ -270,18 +270,17 @@ struct TAPPhotoOriginalResourceTests {
 
         let result = try TAPPhotoLocalIntegrityValidator(
             localValidator: TAPSignedPhotoResourceValidator(
-                validateStillPhoto: { input, captureID, profile in
+                validateStillPhoto: { input, captureID in
                     let data = input.data
                     #expect(data == photoData)
                     #expect(captureID == "self-described-still")
-                    #expect(profile.fileContainer == .heic)
+                    #expect(input.fileContainer == .heic)
                     return ValidatedTAPDepthPhoto(
                         data: data,
-                        manifest: manifest,
                         fileContainer: .heic
                     )
                 },
-                validateLivePhoto: { _, _, _, _ in
+                validateLivePhoto: { _, _, _ in
                     throw TestError.unexpectedRoute
                 }
             )
@@ -335,20 +334,19 @@ struct TAPPhotoOriginalResourceTests {
 
         let result = try TAPPhotoLocalIntegrityValidator(
             localValidator: TAPSignedPhotoResourceValidator(
-                validateStillPhoto: { _, _, _ in
+                validateStillPhoto: { _, _ in
                     throw TestError.unexpectedRoute
                 },
-                validateLivePhoto: { input, receivedMovieURL, captureID, profile in
+                validateLivePhoto: { input, receivedMovieURL, captureID in
                     let data = input.data
                     #expect(data == photoData)
                     #expect(receivedMovieURL == movieURL)
                     #expect(captureID == "self-described-live")
-                    #expect(profile.fileContainer == .heic)
+                    #expect(input.fileContainer == .heic)
                     return ValidatedTAPLivePhoto(
                         photo: ValidatedTAPDepthPhoto(
                             data: data,
-                            manifest: manifest,
-                            fileContainer: .heic
+                                fileContainer: .heic
                         ),
                         pairedVideoURL: receivedMovieURL
                     )

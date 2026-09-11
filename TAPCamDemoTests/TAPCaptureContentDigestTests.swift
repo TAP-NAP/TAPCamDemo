@@ -62,18 +62,16 @@ struct TAPCaptureContentDigestTests {
             schema: .livePhoto
         )
 
-        let digest = try CaptureContentDigest.make(
-            manifest: manifest,
-            basePhotoData: photoData,
+        let digest = try CaptureContentDigest.makePhoto(
+            document: TAPManifestBindingDocument(data: TAPDepthManifestEncoder.manifestData(manifest)),
+            photoData: photoData,
             fileContainer: .heic,
-            depthData: nil,
             pairedVideoURL: movieURL
         )
-        let primaryDigest = try CaptureContentDigest.makeLivePhotoPrimaryComponents(
-            manifest: manifest,
-            basePhotoData: photoData,
-            fileContainer: .heic,
-            depthData: nil
+        let primaryDigest = try CaptureContentDigest.makePhoto(
+            document: TAPManifestBindingDocument(data: TAPDepthManifestEncoder.manifestData(manifest)),
+            photoData: photoData,
+            fileContainer: .heic
         )
         let resources = try #require(digest.signedResources)
         let expectedMovieHash = try Self.sha256Base64URL(movieData)
@@ -98,7 +96,7 @@ struct TAPCaptureContentDigestTests {
         let slot = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: fileURL)
 
         let emptyDigest = try CaptureContentDigest.makeVideo(
-            manifest: manifest,
+            document: TAPManifestBindingDocument(data: TAPVideoManifestEncoder.manifestData(manifest)),
             mp4FileURL: fileURL
         )
         try TAPProofSlot.writeProofEnvelope(
@@ -106,7 +104,7 @@ struct TAPCaptureContentDigestTests {
             intoBMFFFileAt: fileURL
         )
         let proofDigest = try CaptureContentDigest.makeVideo(
-            manifest: manifest,
+            document: TAPManifestBindingDocument(data: TAPVideoManifestEncoder.manifestData(manifest)),
             mp4FileURL: fileURL
         )
 
@@ -126,7 +124,7 @@ struct TAPCaptureContentDigestTests {
         _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: fileURL)
 
         let digest = try CaptureContentDigest.makeVideo(
-            manifest: manifest,
+            document: TAPManifestBindingDocument(data: TAPVideoManifestEncoder.manifestData(manifest)),
             mp4FileURL: fileURL
         )
 
@@ -151,7 +149,10 @@ struct TAPCaptureContentDigestTests {
         _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: fileURL)
 
         #expect(throws: TAPDepthCaptureError.self) {
-            try CaptureContentDigest.makeVideo(manifest: oldManifest, mp4FileURL: fileURL)
+            try CaptureContentDigest.makeVideo(
+                document: TAPManifestBindingDocument(data: TAPVideoManifestEncoder.manifestData(oldManifest)),
+                mp4FileURL: fileURL
+            )
         }
     }
 

@@ -13,7 +13,7 @@ nonisolated enum TAPVideoPhotosReadbackValidator {
         captureID: String,
         packageID: UUID,
         provenanceWriter: TAPCaptureProvenanceWriter = TAPCaptureProvenanceWriter()
-    ) async throws -> TAPVideoManifest {
+    ) async throws {
         let directoryURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("TAPVideoReadback-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
@@ -27,11 +27,10 @@ nonisolated enum TAPVideoPhotosReadbackValidator {
             to: fileURL
         )
 
-        return try await provenanceWriter.validateSignedExportVideoFile(
+        _ = try await provenanceWriter.validateSignedExportVideoFile(
             .init(fileURL: fileURL),
             expectedCaptureID: captureID,
-            expectedPackageID: packageID,
-            validatesDepthTrack: false
-        ).manifest
+            expectedPackageID: packageID
+        )
     }
 }

@@ -43,8 +43,7 @@ nonisolated struct PhotoLibraryPendingCaptureExportActions: Sendable {
                     let validatedLivePhoto = try provenanceWriter.validateSignedExportLivePhoto(
                         input,
                         pairedVideoURL: pairedVideoURL,
-                        expectedCaptureID: record.captureID,
-                        expectedProfile: record.outputProfile
+                        expectedCaptureID: record.captureID
                     )
                     return try await PhotoLibraryWriter.saveDepthLivePhoto(
                         validatedLivePhoto,
@@ -54,8 +53,7 @@ nonisolated struct PhotoLibraryPendingCaptureExportActions: Sendable {
                 } else {
                     let validatedPhoto = try provenanceWriter.validateSignedExportPhoto(
                         input,
-                        expectedCaptureID: record.captureID,
-                        expectedProfile: record.outputProfile
+                        expectedCaptureID: record.captureID
                     )
                     return try await PhotoLibraryWriter.saveDepthPhoto(
                         validatedPhoto,
@@ -75,7 +73,6 @@ nonisolated struct PhotoLibraryPendingVideoExportActions: Sendable {
     let saveVideoFile: @Sendable (
         URL,
         TAPPendingCaptureRecord,
-        TAPVideoManifest,
         PhotoLibraryPendingVideoCommitBoundary
     ) async throws -> String
 
@@ -85,11 +82,10 @@ nonisolated struct PhotoLibraryPendingVideoExportActions: Sendable {
                 try await TAPCaptureProvenanceWriter().validateSignedExportVideoFile(
                     .init(fileURL: fileURL),
                     expectedCaptureID: record.captureID,
-                    expectedPackageID: record.packageID,
-                    validatesDepthTrack: false
+                    expectedPackageID: record.packageID
                 )
             },
-            saveVideoFile: { fileURL, record, _, commitWillBegin in
+            saveVideoFile: { fileURL, record, commitWillBegin in
                 try await PhotoLibraryWriter.saveTAPVideoFile(
                     at: fileURL,
                     packageID: record.packageID,
@@ -112,7 +108,7 @@ nonisolated struct PhotoLibraryPendingVideoReadbackActions: Sendable {
                 try await PhotoLibraryWriter.tapVideoAssetCandidateIdentifiers(packageID: packageID)
             },
             validateReadback: { assetID, record in
-                _ = try await TAPVideoPhotosReadbackValidator.validate(
+                try await TAPVideoPhotosReadbackValidator.validate(
                     assetLocalIdentifier: assetID,
                     captureID: record.captureID,
                     packageID: record.packageID
@@ -205,7 +201,6 @@ struct PhotoLibraryPendingCaptureExporter: TAPPendingCaptureExporting {
             let assetID = try await videoActions.saveVideoFile(
                 validatedVideo.fileURL,
                 record,
-                validatedVideo.manifest,
                 {
                     _ = try await store.markVideoPhotosCommitAmbiguous(
                         captureID: record.captureID
@@ -316,8 +311,7 @@ struct PhotoLibraryPendingCaptureReadback: TAPPendingCaptureReadingBack {
              .pendingCaptureManifestIDMismatch,
              .pendingCaptureProofMissing,
              .pendingCaptureProofInvalid,
-             .pendingCaptureProofExternalMutation,
-             .missingDepthData:
+             .pendingCaptureProofExternalMutation:
             return true
         default:
             return false

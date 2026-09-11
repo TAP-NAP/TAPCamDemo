@@ -32,7 +32,7 @@ struct TAPCaptureProvenanceWriterSigningTests {
             _ = try await TAPCaptureProvenanceWriter().signedPhotoData(
                 from: unsignedData,
                 expectedCaptureID: "record-capture",
-                expectedProfile: .releasePhotoDepthHEIC,
+                expectedContainer: .heic,
                 assertionSigner: signer
             )
             Issue.record("Expected manifest id mismatch to stop pending signing.")

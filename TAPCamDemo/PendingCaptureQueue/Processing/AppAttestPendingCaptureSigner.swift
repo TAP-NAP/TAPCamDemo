@@ -35,7 +35,7 @@ struct AppAttestPendingCaptureSigner: TAPPendingCaptureSigning {
             let signedPhoto = try await provenanceWriter.signedPhotoData(
                 from: unsignedData,
                 expectedCaptureID: record.captureID,
-                expectedProfile: record.outputProfile,
+                expectedContainer: record.outputProfile.fileContainer,
                 assertionSigner: signer,
                 pairedVideoURL: pairedVideoURL
             )

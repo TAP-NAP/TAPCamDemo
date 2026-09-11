@@ -166,25 +166,23 @@ nonisolated enum TAPVideoPerformanceTrace {
     }
 
     static func beginLocalValidation(
-        purpose: String,
-        validatesDepthTrack: Bool
+        purpose: String
     ) -> OSSignpostIntervalState {
         signing.beginInterval(
             "TAPVideoLocalValidation",
-            "purpose=\(purpose, privacy: .public) validatesDepthTrack=\(validatesDepthTrack, privacy: .public)"
+            "purpose=\(purpose, privacy: .public)"
         )
     }
 
     static func endLocalValidation(
         _ state: OSSignpostIntervalState,
         purpose: String,
-        validatesDepthTrack: Bool,
         succeeded: Bool
     ) {
         signing.endInterval(
             "TAPVideoLocalValidation",
             state,
-            "purpose=\(purpose, privacy: .public) validatesDepthTrack=\(validatesDepthTrack, privacy: .public) succeeded=\(succeeded, privacy: .public)"
+            "purpose=\(purpose, privacy: .public) succeeded=\(succeeded, privacy: .public)"
         )
     }
 

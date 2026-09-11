@@ -21,7 +21,6 @@ enum TAPDepthCaptureError: LocalizedError {
     case unableToAddDepthOutput
     case depthDeliveryUnsupported
     case unsupportedZoomFactor
-    case missingDepthData
     case invalidCaptureOutputProfile(String)
     case captureOutputCodecUnsupported(String)
     case unableToCreatePhotoData
@@ -78,8 +77,6 @@ enum TAPDepthCaptureError: LocalizedError {
             "The current session configuration does not support depth photo delivery."
         case .unsupportedZoomFactor:
             "The selected zoom factor does not support depth delivery on this camera."
-        case .missingDepthData:
-            "The captured photo did not include AVDepthData."
         case .invalidCaptureOutputProfile(let reason):
             "The capture output profile is not valid for Release photo-depth output: \(reason)"
         case .captureOutputCodecUnsupported(let reason):

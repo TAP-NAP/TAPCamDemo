@@ -9,16 +9,15 @@ import Foundation
 nonisolated struct TAPVideoValidationInput: Sendable {
     let fileURL: URL
     let layout: TAPVideoContainerLayout
-    let manifestDocument: TAPVideoManifestDocument
+    let manifestDocument: TAPManifestBindingDocument
 
     init(fileURL: URL) throws {
         try Task<Never, Never>.checkCancellation()
         self.fileURL = fileURL
         layout = try TAPVideoContainerLayout.read(from: fileURL)
-        manifestDocument = try TAPVideoManifestBox.decodedManifestDocument(
-            fromFileAt: fileURL,
-            layout: layout
-        )
+        manifestDocument = try TAPManifestBindingDocument(data: TAPVideoManifestBox.manifestData(
+            fromFileAt: fileURL, layout: layout
+        ))
     }
 }
 

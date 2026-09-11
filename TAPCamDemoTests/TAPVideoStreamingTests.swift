@@ -174,36 +174,6 @@ struct TAPVideoStreamingTests {
         #expect(probe.checkCount == 5)
     }
 
-    @Test func depthTrackValidatorFailsClosedAboveItsCombined32MiBBudget() throws {
-        #expect(
-            TAPVideoDepthTrackValidator.maximumCombinedFrameBufferBytes
-                == 32 * 1024 * 1024
-        )
-        let withinBudget = TAPVideoManifest.DepthFormat(
-            kind: "depth",
-            pixelFormat: "fdep",
-            width: 8_192,
-            height: 1_024,
-            packedRowStride: 8_192 * 4,
-            bytesPerSample: 4,
-            uncompressedFrameByteCount: 32 * 1024 * 1024
-        )
-        try TAPVideoDepthTrackValidator.validateDepthFormat(withinBudget)
-
-        let overBudget = TAPVideoManifest.DepthFormat(
-            kind: "depth",
-            pixelFormat: "fdep",
-            width: 8_193,
-            height: 1_024,
-            packedRowStride: 8_193 * 4,
-            bytesPerSample: 4,
-            uncompressedFrameByteCount: (32 * 1024 * 1024) + 4_096
-        )
-        #expect(throws: TAPDepthCaptureError.self) {
-            try TAPVideoDepthTrackValidator.validateDepthFormat(overBudget)
-        }
-    }
-
     @Test func zstdLevelOneRoundTripsDeterministicallyAndRawFallbackIsExact() throws {
         let packed = Data(repeating: Data("depth-row-depth-row".utf8), count: 2_048)
         let first = try TAPDepthFrameCodec.encode(packed, preferredCodec: .zstd1)
@@ -325,179 +295,65 @@ struct TAPVideoStreamingTests {
         }
     }
 
-    @Test func depthTimelineRejectsNegativeDuplicateAndOutOfRangePTS() throws {
-        let common = (
-            trackStartSeconds: 0.0,
-            trackDurationSeconds: 6.0,
-            presentationDurationSeconds: 6.0,
-            nominalDepthIntervalSeconds: Optional(1.0),
-            gaps: [TAPVideoManifest.DepthGap](),
-            timestampToleranceSeconds: 1.0 / 600.0
-        )
-
-        #expect(throws: TAPDepthCaptureError.self) {
-            try TAPVideoDepthTimelineValidationPolicy.validate(
-                sampleTimesSeconds: [-0.01],
-                trackStartSeconds: common.trackStartSeconds,
-                trackDurationSeconds: common.trackDurationSeconds,
-                presentationDurationSeconds: common.presentationDurationSeconds,
-                nominalDepthIntervalSeconds: common.nominalDepthIntervalSeconds,
-                reportedMaxObservedDepthIntervalSeconds: nil,
-                gaps: common.gaps,
-                timestampToleranceSeconds: common.timestampToleranceSeconds
-            )
-        }
-        #expect(throws: TAPDepthCaptureError.self) {
-            try TAPVideoDepthTimelineValidationPolicy.validate(
-                sampleTimesSeconds: [0, 0],
-                trackStartSeconds: common.trackStartSeconds,
-                trackDurationSeconds: common.trackDurationSeconds,
-                presentationDurationSeconds: common.presentationDurationSeconds,
-                nominalDepthIntervalSeconds: common.nominalDepthIntervalSeconds,
-                reportedMaxObservedDepthIntervalSeconds: 1,
-                gaps: common.gaps,
-                timestampToleranceSeconds: common.timestampToleranceSeconds
-            )
-        }
-        #expect(throws: TAPDepthCaptureError.self) {
-            try TAPVideoDepthTimelineValidationPolicy.validate(
-                sampleTimesSeconds: [0, 7],
-                trackStartSeconds: common.trackStartSeconds,
-                trackDurationSeconds: common.trackDurationSeconds,
-                presentationDurationSeconds: common.presentationDurationSeconds,
-                nominalDepthIntervalSeconds: common.nominalDepthIntervalSeconds,
-                reportedMaxObservedDepthIntervalSeconds: 7,
-                gaps: common.gaps,
-                timestampToleranceSeconds: common.timestampToleranceSeconds
-            )
-        }
-    }
-
-    @Test func depthTimelineRequiresDeclaredCoverageForActualFiveSecondGap() throws {
-        #expect(throws: TAPDepthCaptureError.self) {
-            try TAPVideoDepthTimelineValidationPolicy.validate(
-                sampleTimesSeconds: [0, 5],
-                trackStartSeconds: 0,
-                trackDurationSeconds: 6,
-                presentationDurationSeconds: 6,
-                nominalDepthIntervalSeconds: 1,
-                reportedMaxObservedDepthIntervalSeconds: 5,
-                gaps: [],
-                timestampToleranceSeconds: 1.0 / 600.0
-            )
-        }
-
-        try TAPVideoDepthTimelineValidationPolicy.validate(
-            sampleTimesSeconds: [0, 5],
-            trackStartSeconds: 0,
-            trackDurationSeconds: 6,
-            presentationDurationSeconds: 6,
-            nominalDepthIntervalSeconds: 1,
-            reportedMaxObservedDepthIntervalSeconds: 5,
-            gaps: [Self.gap(
-                reason: .silentCadence,
-                startValue: 600,
-                endValue: 3_000
-            )],
-            timestampToleranceSeconds: 1.0 / 600.0
-        )
-    }
-
-    @Test func depthTimelineAcceptsCoveredLeadingInterFrameAndTrailingMissingCores() throws {
-        try TAPVideoDepthTimelineValidationPolicy.validate(
-            sampleTimesSeconds: [3, 7],
-            trackStartSeconds: 0,
-            trackDurationSeconds: 10,
-            presentationDurationSeconds: 10,
-            nominalDepthIntervalSeconds: 1,
-            reportedMaxObservedDepthIntervalSeconds: 4,
-            gaps: [
-                Self.gap(reason: .silentCadence, startValue: 0, endValue: 1_800),
-                Self.gap(reason: .boundedAggregation, startValue: 2_400, endValue: 4_200),
-                Self.gap(reason: .metadataBackpressure, startValue: 4_800, endValue: 6_000)
-            ],
-            timestampToleranceSeconds: 1.0 / 600.0
-        )
-    }
-
-    @Test func signedFileValidationAuthenticatesBeforeActualTrackScan() async throws {
-        var phases: [TAPVideoSignedFileValidationOrder.Phase] = []
-        try await TAPVideoSignedFileValidationOrder.run(
-            validatesDepthTrack: true,
-            authenticate: {
-                phases.append(.authenticateProofAndContentBinding)
-            },
-            validateActualTracks: {
-                phases.append(.validateActualTracks)
-            }
-        )
-        #expect(phases == [
-            .authenticateProofAndContentBinding,
-            .validateActualTracks
-        ])
-
-        phases.removeAll()
-        try await TAPVideoSignedFileValidationOrder.run(
-            validatesDepthTrack: false,
-            authenticate: {
-                phases.append(.authenticateProofAndContentBinding)
-            },
-            validateActualTracks: {
-                phases.append(.validateActualTracks)
-            }
-        )
-        #expect(phases == [.authenticateProofAndContentBinding])
-
-        phases.removeAll()
-        await #expect(throws: ExpectedSignedValidationFailure.self) {
-            try await TAPVideoSignedFileValidationOrder.run(
-                validatesDepthTrack: true,
-                authenticate: {
-                    phases.append(.authenticateProofAndContentBinding)
-                    throw ExpectedSignedValidationFailure.rejected
-                },
-                validateActualTracks: {
-                    phases.append(.validateActualTracks)
-                }
-            )
-        }
-        #expect(phases == [.authenticateProofAndContentBinding])
-    }
-
-    @Test func videoSigningBindsExactBytesWithoutRequiringSemanticTrackScan() async throws {
+    @Test func videoSigningBindsRawManifestAndOpaqueTelemetryWithoutContentDecoding() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
         let store = TAPPendingCaptureStore(rootURL: rootURL)
-        let record = try await TAPCamDemoTestFixtures.ingestPendingTAPVideo(
-            store: store,
-            captureID: "byte-binding-only-video"
-        )
-        let videoURL = try await store.videoArtifactURL(captureID: record.captureID)
+        let captureID = "byte-binding-only-video"
+        let packageID = UUID()
+        let workspace = try await store.beginVideoCaptureWorkspace(captureID: captureID)
+        let videoURL = workspace.artifactURL
+        let payload = "{ \"id\":\"\(captureID)\", \"packageID\":\"\(packageID.uuidString)\", \"capturedAt\":\"uninterpreted-time\", \"depthCoverage\":{\"sampleCount\":-1}, \"measurement\":1e-1 }"
+        let rawManifest = Data(" { \"schema\":{\"id\":\"\(TAPVideoManifest.schemaIdentifier)\",\"version\":null}, \"proofs\":[null], \"payload\": \(payload) } ".utf8)
+        try (Self.syntheticMP4Data()
+            + Self.box32(type: "uuid", payload: Data("TAPCAMVIDEOMANF1".utf8) + rawManifest)
+            + Self.box32(type: "uuid", payload: TAPVideoCaptureTelemetryBox.uuid + Data("opaque telemetry".utf8)))
+            .write(to: videoURL)
+        _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: videoURL)
+        let record = try await store.ingestVideo(TAPPendingVideoCaptureArtifact(
+            captureID: captureID, packageID: packageID, capturedAt: Date(), videoURL: videoURL
+        ))
+        let stagedURL = try await store.videoArtifactURL(captureID: captureID)
         let signer = SuccessfulVideoCaptureAssertionSigner()
         let writer = TAPCaptureProvenanceWriter()
-
-        let signed = try await writer.signedVideoFile(
-            at: videoURL,
-            expectedCaptureID: record.captureID,
-            expectedPackageID: record.packageID,
-            assertionSigner: signer
+        _ = try await writer.signedVideoFile(
+            at: stagedURL, expectedCaptureID: record.captureID,
+            expectedPackageID: record.packageID, assertionSigner: signer
         )
         let validated = try await writer.validateSignedExportVideoFile(
-            .init(fileURL: videoURL),
-            expectedCaptureID: record.captureID,
+            .init(fileURL: stagedURL), expectedCaptureID: record.captureID,
             expectedPackageID: record.packageID
         )
 
-        #expect(signed.fileURL == videoURL)
-        #expect(validated.manifest.payload.id == record.captureID)
-        #expect(await signer.lastDigest()?.assetHash.fileContainer == "mp4")
-
-        await #expect(throws: Error.self) {
+        let envelope = try TAPProofSlot.proofEnvelopeData(fromBMFFFileAt: stagedURL)
+        for outerTimestamp in ["unbound-time", nil] as [String?] {
+            var proof = try #require(JSONSerialization.jsonObject(with: envelope) as? [String: Any])
+            proof["createdAt"] = outerTimestamp
+            try TAPProofSlot.writeProofEnvelope(
+                JSONSerialization.data(withJSONObject: proof), intoBMFFFileAt: stagedURL
+            )
             _ = try await writer.validateSignedExportVideoFile(
-                .init(fileURL: videoURL),
-                expectedCaptureID: record.captureID,
-                expectedPackageID: record.packageID,
-                validatesDepthTrack: true
+                .init(fileURL: stagedURL), expectedCaptureID: record.captureID,
+                expectedPackageID: record.packageID
+            )
+        }
+        #expect(validated.fileURL == stagedURL)
+        #expect(try TAPVideoManifestBox.manifestData(fromFileAt: stagedURL) == rawManifest)
+        #expect(await signer.lastDigest()?.metadataHash.value == Data(SHA256.hash(data: Data(payload.utf8))).appAttestBase64URL)
+        #expect(throws: DecodingError.self) {
+            try TAPVideoManifestBox.decodedManifest(fromFileAt: stagedURL)
+        }
+        let layout = try TAPVideoContainerLayout.read(from: stagedURL)
+        let manifestBox = try #require(layout.topLevelBoxes.first { $0.userType == Data("TAPCAMVIDEOMANF1".utf8) })
+        let timestampRange = try #require(rawManifest.range(of: Data("uninterpreted-time".utf8)))
+        let handle = try FileHandle(forUpdating: stagedURL)
+        try handle.seek(toOffset: manifestBox.payloadRange.offset + UInt64(timestampRange.lowerBound))
+        try handle.write(contentsOf: Data("x".utf8))
+        try handle.close()
+        await #expect(throws: TAPDepthCaptureError.self) {
+            try await writer.validateSignedExportVideoFile(
+                .init(fileURL: stagedURL), expectedCaptureID: record.captureID,
+                expectedPackageID: record.packageID
             )
         }
     }
@@ -530,7 +386,39 @@ struct TAPVideoStreamingTests {
         )
 
         #expect(validated.captureID == record.captureID)
-        #expect(validated.packageID == record.packageID)
+    }
+
+    @Test(arguments: [nil, "opaque-package-description"] as [String?])
+    func photosVideoIntegrityDoesNotRequireAnExpectedPackageIdentity(packageID: String?) async throws {
+        let fileURL = try Self.makeTemporaryFile(data: Self.syntheticMP4Data())
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        let packageField = packageID.map { ",\"packageID\":\"\($0)\"" } ?? ""
+        let rawManifest = Data("{\"schema\":{\"id\":\"\(TAPVideoManifest.schemaIdentifier)\"},\"payload\":{\"id\":\"photos-video\",\"capturedAt\":\"bound-time\"\(packageField)}}".utf8)
+        try TAPBMFFStreamingFile.append(
+            Self.box32(type: "uuid", payload: Data("TAPCAMVIDEOMANF1".utf8) + rawManifest), to: fileURL
+        )
+        _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: fileURL)
+        let digest = try CaptureContentDigest.makeVideo(
+            document: TAPManifestBindingDocument(data: rawManifest), mp4FileURL: fileURL
+        )
+        let assertion = try await SuccessfulVideoCaptureAssertionSigner().sign(contentDigest: digest)
+        try TAPProofSlot.writeProofEnvelope(
+            JSONEncoder.tapCaptureCanonical.encode(assertion.proof), intoBMFFFileAt: fileURL
+        )
+        let lease = try TAPVideoOriginalResourceOwner(
+            mediaID: .photosAsset("photos-asset"), origin: .photosAsset(assetID: "photos-asset"),
+            fileURL: fileURL
+        ).acquireLease()
+        let result = try await TAPVideoLocalIntegrityValidator().validate(lease)
+        #expect(result.captureID == "photos-video")
+        await #expect(throws: TAPVideoLocalIntegrityError.expectedPackageIDMismatch) {
+            try await TAPVideoLocalIntegrityValidator().validate(lease, expectedPackageID: UUID())
+        }
+        await #expect(throws: TAPDepthCaptureError.self) {
+            try await TAPCaptureProvenanceWriter().validateSignedExportVideoFile(
+                .init(fileURL: fileURL), expectedCaptureID: "photos-video", expectedPackageID: UUID()
+            )
+        }
     }
 
     @Test func embeddedIdentityVideoValidationRejectsMutatedOriginal() async throws {
@@ -594,6 +482,11 @@ struct TAPVideoStreamingTests {
                 lease,
                 expectedCaptureID: "different-capture-id",
                 expectedPackageID: record.packageID
+            )
+        }
+        await #expect(throws: TAPVideoLocalIntegrityError.expectedPackageIDMismatch) {
+            try await TAPVideoLocalIntegrityValidator().validate(
+                lease, expectedCaptureID: record.captureID, expectedPackageID: UUID()
             )
         }
     }
@@ -838,7 +731,7 @@ struct TAPVideoStreamingTests {
                     expectedPackageID: record.packageID
                 )
             },
-            saveVideoFile: { fileURL, record, _, commitWillBegin in
+            saveVideoFile: { fileURL, record, commitWillBegin in
                 #expect(record.videoArtifactState == .signed)
                 try await commitWillBegin()
                 try FileManager.default.copyItem(at: fileURL, to: copiedOriginalURL)
@@ -853,7 +746,7 @@ struct TAPVideoStreamingTests {
                     expectedCaptureID: record.captureID,
                     expectedPackageID: record.packageID
                 )
-                #expect(validated.manifest.payload.depthCoverage == .none)
+                #expect((try TAPVideoManifestBox.decodedManifest(fromFileAt: validated.fileURL)).payload.depthCoverage == .none)
             }
         ))
 
@@ -890,7 +783,7 @@ struct TAPVideoStreamingTests {
             .init(fileURL: packagedVideoURL), expectedCaptureID: record.captureID,
             expectedPackageID: record.packageID
         )
-        #expect(packaged.manifest.payload.depthCoverage == .none)
+        #expect((try TAPVideoManifestBox.decodedManifest(fromFileAt: packaged.fileURL)).payload.depthCoverage == .none)
     }
 
     @Test(arguments: [true, false])

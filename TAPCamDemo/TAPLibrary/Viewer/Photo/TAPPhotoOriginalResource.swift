@@ -470,33 +470,31 @@ nonisolated struct TAPPhotoLocalIntegrityValidator: Sendable {
         try Task<Never, Never>.checkCancellation()
         let input = try TAPPhotoValidationInput(data: photoData)
         let fileContainer = input.fileContainer
-        let manifest = input.manifestDocument.manifest
+        let document = input.manifestDocument
         try Task<Never, Never>.checkCancellation()
         if let expectedCaptureID,
-           manifest.payload.id != expectedCaptureID {
+           document.captureID != expectedCaptureID {
             throw TAPPhotoLocalIntegrityError.expectedCaptureIDMismatch
         }
-        let expectedProfile = input.inferredProfile
 
-        if manifest.schema == TAPDepthManifest.Schema.livePhoto {
+        if document.schemaID == TAPDepthManifest.livePhotoSchemaIdentifier {
             guard let pairedVideoURL = resource.pairedVideoURL else {
                 throw TAPPhotoLocalIntegrityError.livePhotoPairedVideoMissing
             }
             _ = try localValidator.validateLivePhoto(
                 input,
                 pairedVideoURL,
-                manifest.payload.id,
-                expectedProfile
+                document.captureID
             )
             try Task<Never, Never>.checkCancellation()
             return TAPPhotoLocalIntegrityResult(
-                captureID: manifest.payload.id,
+                captureID: document.captureID,
                 mediaKind: .livePhoto,
                 fileContainer: fileContainer
             )
         }
 
-        guard manifest.schema == TAPDepthManifest.Schema() else {
+        guard document.schemaID == TAPDepthManifest.schemaIdentifier else {
             throw TAPPhotoLocalIntegrityError.unsupportedManifestSchema
         }
         guard !resource.expectsPairedVideo else {
@@ -504,12 +502,11 @@ nonisolated struct TAPPhotoLocalIntegrityValidator: Sendable {
         }
         _ = try localValidator.validateStillPhoto(
             input,
-            manifest.payload.id,
-            expectedProfile
+            document.captureID
         )
         try Task<Never, Never>.checkCancellation()
         return TAPPhotoLocalIntegrityResult(
-            captureID: manifest.payload.id,
+            captureID: document.captureID,
             mediaKind: .photo,
             fileContainer: fileContainer
         )

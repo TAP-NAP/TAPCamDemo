@@ -8,29 +8,6 @@ import Testing
 @testable import TAPCamDemo
 
 struct TAPCaptureManifestEncodingTests {
-    @Test func producerRejectsManifestProofBodies() throws {
-        let payload = TAPCamDemoTestFixtures.samplePayload(location: TAPCamDemoTestFixtures.sampleLocation)
-        let manifestWithProof = TAPDepthManifest(
-            payload: payload,
-            proofs: [
-                TAPDepthManifest.Proof(
-                    type: "tap.example.signature",
-                    algorithm: "placeholder",
-                    keyID: "test-key",
-                    createdAt: "2026-04-25T00:00:00.000Z",
-                    value: "not-a-real-signature"
-                )
-            ]
-        )
-
-        #expect(throws: TAPDepthCaptureError.self) {
-            try TAPCaptureProvenanceWriter().writeManifest(
-                manifestWithProof,
-                into: TAPCamDemoTestFixtures.sampleThumbnailSourceData()
-            )
-        }
-    }
-
     @Test func embeddedPhotoPayloadBytesAreTheStandaloneHashInput() throws {
         let payload = TAPCamDemoTestFixtures.samplePayload(
             location: TAPCamDemoTestFixtures.sampleHighPrecisionLocation
@@ -59,21 +36,16 @@ struct TAPCaptureManifestEncodingTests {
         )
     }
 
-    @Test func manifestReaderRejectsParseableButNonCanonicalPayloadBytes() throws {
-        let manifestData = try TAPDepthManifestEncoder.manifestData(
-            TAPDepthManifest(payload: TAPCamDemoTestFixtures.samplePayload(location: nil))
-        )
-        let canonical = try #require(String(data: manifestData, encoding: .utf8))
-        let nonCanonical = canonical.replacingOccurrences(
-            of: #"{"payload":{"#,
-            with: #"{"payload": {"#
-        )
-        let nonCanonicalData = try #require(nonCanonical.data(using: .utf8))
+    @Test func bindingReaderPreservesPayloadBytesAcrossOuterWhitespaceAndMemberOrder() throws {
+        let payload = #"{ "id": "raw-capture", "capturedAt": "uninterpreted-time", "number": 1e-1, "nested": [0, {"text": "}\"{"}] }"#
+        let data = Data(" { \"schema\": {\"description\":null, \"id\":\"\(TAPDepthManifest.schemaIdentifier)\"}, \"proofs\": [null], \"payload\": \(payload) } ".utf8)
+        let document = try TAPManifestBindingDocument(data: data)
 
-        #expect(nonCanonical != canonical)
-        _ = try JSONDecoder().decode(TAPDepthManifest.self, from: nonCanonicalData)
-        #expect(throws: TAPDepthCaptureError.self) {
-            try TAPDepthManifestEncoder.decodedDocument(from: nonCanonicalData)
+        #expect(document.captureID == "raw-capture")
+        #expect(document.capturedAt == "uninterpreted-time")
+        #expect(document.rawPayloadData == Data(payload.utf8))
+        #expect(throws: DecodingError.self) {
+            try JSONDecoder().decode(TAPDepthManifest.self, from: data)
         }
     }
 

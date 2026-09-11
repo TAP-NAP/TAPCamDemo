@@ -9,26 +9,24 @@ import Foundation
 /// Transport builders consume the result; they do not repeat these checks.
 /// These checks do not perform backend App Attest assertion verification.
 nonisolated struct TAPSignedPhotoResourceValidator: Sendable {
-    typealias StillPhotoValidator = @Sendable (TAPPhotoValidationInput, String, CaptureOutputProfile) throws -> ValidatedTAPDepthPhoto
-    typealias LivePhotoValidator = @Sendable (TAPPhotoValidationInput, URL, String, CaptureOutputProfile) throws -> ValidatedTAPLivePhoto
+    typealias StillPhotoValidator = @Sendable (TAPPhotoValidationInput, String) throws -> ValidatedTAPDepthPhoto
+    typealias LivePhotoValidator = @Sendable (TAPPhotoValidationInput, URL, String) throws -> ValidatedTAPLivePhoto
 
     let validateStillPhoto: StillPhotoValidator
     let validateLivePhoto: LivePhotoValidator
 
     static let production = TAPSignedPhotoResourceValidator(
-        validateStillPhoto: { input, captureID, profile in
+        validateStillPhoto: { input, captureID in
             try TAPCaptureProvenanceWriter().validateSignedExportPhoto(
                 input,
-                expectedCaptureID: captureID,
-                expectedProfile: profile
+                expectedCaptureID: captureID
             )
         },
-        validateLivePhoto: { input, pairedVideoURL, captureID, profile in
+        validateLivePhoto: { input, pairedVideoURL, captureID in
             try TAPCaptureProvenanceWriter().validateSignedExportLivePhoto(
                 input,
                 pairedVideoURL: pairedVideoURL,
-                expectedCaptureID: captureID,
-                expectedProfile: profile
+                expectedCaptureID: captureID
             )
         }
     )

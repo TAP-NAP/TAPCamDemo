@@ -429,39 +429,40 @@ struct PendingCaptureStorageTests {
     }
 
     @Test(arguments: [0, -1])
-    func videoIngestRejectsInvalidDepthCoverage(sampleCount: Int) async throws {
+    func videoIngestPreservesDeclaredDepthCoverage(sampleCount: Int) async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: rootURL) }
         let store = TAPPendingCaptureStore(rootURL: rootURL)
         let captureID = "inconsistent-depth-video"
         let packageID = UUID()
         let workspace = try await store.beginVideoCaptureWorkspace(captureID: captureID)
-        let manifest = Self.pendingVideoManifest(captureID: captureID, packageID: packageID)
+        let initialManifest = Self.pendingVideoManifest(captureID: captureID, packageID: packageID)
         var object = try #require(JSONSerialization.jsonObject(
-            with: TAPVideoManifestEncoder.manifestData(manifest)
+            with: TAPVideoManifestEncoder.manifestData(initialManifest)
         ) as? [String: Any])
         var payload = try #require(object["payload"] as? [String: Any])
         var coverage = try #require(payload["depthCoverage"] as? [String: Any])
         coverage["sampleCount"] = sampleCount
         payload["depthCoverage"] = coverage
         object["payload"] = payload
-        let invalidManifest = try JSONDecoder().decode(
+        let manifest = try JSONDecoder().decode(
             TAPVideoManifest.self,
             from: JSONSerialization.data(withJSONObject: object)
         )
         try Data([0, 0, 0, 12] + Array("ftypmp42".utf8)).write(to: workspace.artifactURL)
-        try TAPVideoManifestBox.appendManifest(invalidManifest, toFileAt: workspace.artifactURL)
+        try TAPVideoManifestBox.appendManifest(manifest, toFileAt: workspace.artifactURL)
         _ = try TAPProofSlot.ensureEmptyBMFFSlot(inFileAt: workspace.artifactURL)
 
-        await #expect(throws: TAPDepthCaptureError.self) {
-            _ = try await store.ingestVideo(TAPPendingVideoCaptureArtifact(
-                captureID: captureID,
-                packageID: packageID,
-                capturedAt: Date(),
-                videoURL: workspace.artifactURL
-            ))
-        }
-        #expect(try await store.processingCandidates().isEmpty)
+        let record = try await store.ingestVideo(TAPPendingVideoCaptureArtifact(
+            captureID: captureID,
+            packageID: packageID,
+            capturedAt: Date(),
+            videoURL: workspace.artifactURL
+        ))
+        #expect(record.status == .pending)
+        let storedURL = try await store.videoArtifactURL(captureID: captureID)
+        let storedManifest = try TAPVideoManifestBox.decodedManifest(fromFileAt: storedURL)
+        #expect(storedManifest.payload.depthCoverage.sampleCount == sampleCount)
     }
 
     @Test func pendingCaptureStoreRemovesOnlyUnownedInterruptedVideoWorkspaces() async throws {

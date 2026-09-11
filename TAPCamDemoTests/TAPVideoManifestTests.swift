@@ -10,83 +10,45 @@ import Testing
 @testable import TAPCamDemo
 
 struct TAPVideoManifestTests {
-    @Test func adoptedExtensionsMatchSharedExactByteVectors() throws {
+    @Test func inlineCalibrationMatchesSharedExactByteVectors() throws {
         let url = try #require(Bundle(for: TAPVideoExtensionFixtureBundle.self)
             .url(forResource: "tap-video-extensions-v1", withExtension: "json"))
         let corpus = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
-        let context = try #require(corpus["context"] as? [String: Any])
         let vectors = try #require(corpus["cases"] as? [[String: Any]])
-        var payload = try #require(JSONSerialization.jsonObject(
-            with: JSONEncoder.tapCaptureCanonical.encode(Self.samplePayload(depthCoverage: .none))) as? [String: Any])
-        for key in ["container", "rgbTrack"] {
-            var track = try #require(payload[key] as? [String: Any])
-            track["durationSeconds"] = context["durationSeconds"]
-            track["timeScale"] = context["timeScale"]
-            payload[key] = track
-        }
-        var coverage = try #require(payload["depthCoverage"] as? [String: Any])
-        coverage["deliveredSampleCount"] = context["deliveredDepthSampleCount"]
-        payload["depthCoverage"] = coverage
-        let manifest = TAPVideoManifest(payload: try JSONDecoder().decode(TAPVideoManifest.Payload.self,
-            from: JSONSerialization.data(withJSONObject: payload)))
-        for vector in vectors {
+        for vector in vectors where vector["extension"] as? String == "cald" {
             let id = try #require(vector["id"] as? String)
             let base64 = try #require(vector["utf8Base64"] as? String)
             let data = try #require(Data(base64Encoded: base64))
             #expect(data.count == vector["utf8ByteCount"] as? Int)
             #expect(SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() == vector["utf8SHA256"] as? String)
-            func decode() throws {
-                if vector["extension"] as? String == "cald" {
-                    _ = try TAPDepthInlineCalibration.decode(data)
-                } else {
-                    let file = try Self.makeTemporaryFile(data: Self.bmffBox(
-                        type: "uuid", payload: TAPVideoCaptureTelemetryBox.uuid + data))
-                    defer { try? FileManager.default.removeItem(at: file) }
-                    _ = try #require(try TAPVideoCaptureTelemetryBox.read(from: file, manifest: manifest))
-                }
-            }
             if vector["expectedDecision"] as? String == "accept" {
-                try decode()
+                _ = try TAPDepthInlineCalibration.decode(data)
             } else {
-                #expect(throws: (any Error).self, "Must reject \(id)") { try decode() }
+                #expect(throws: (any Error).self, "Must reject \(id)") { _ = try TAPDepthInlineCalibration.decode(data) }
             }
         }
     }
 
-    @Test func captureTelemetryPreservesLegacyAndRejectsInvalidProvenance() throws {
-        let manifest = TAPVideoManifest(payload: Self.samplePayload(depthCoverage: .none))
+    @Test func captureTelemetryPreservesMeasurementsWithoutJudgingTheirMeaning() throws {
         let fileURL = try Self.makeTemporaryFile(data: Self.bmffBox(type: "ftyp", payload: Data("isomtap ".utf8)))
-        #expect(try TAPVideoCaptureTelemetryBox.read(from: fileURL, manifest: manifest) == nil)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        let sample = TAPVideoCaptureTelemetry.Sample(
+            ptsSeconds: 0, quaternion: [0, 0, 0, 0], rotationRate: [0, 0, 0],
+            gravity: [0, 0, 0], userAcceleration: [0, 0, 0]
+        )
         let telemetry = TAPVideoCaptureTelemetry(
-            filtering: .init(requestedEnabled: true),
-            motion: .init(status: .unavailable)
+            filtering: .init(requestedEnabled: true, filteredSampleCount: -1),
+            motion: .init(status: .unavailable, samples: [sample, sample])
         )
-        try TAPVideoCaptureTelemetryBox.append(telemetry, manifest: manifest, to: fileURL)
-        #expect(try TAPVideoCaptureTelemetryBox.read(from: fileURL, manifest: manifest) == telemetry)
-        let encoded = try JSONEncoder.tapCaptureCanonical.encode(telemetry)
-        #expect(String(decoding: encoded, as: UTF8.self).contains("\"motionToCaptureOffsetSeconds\":null"))
-        #expect(throws: TAPDepthCaptureError.self) {
-            try TAPVideoCaptureTelemetryBox.append(telemetry, manifest: manifest, to: fileURL)
-        }
-        #expect(throws: TAPDepthCaptureError.self) {
-            try TAPVideoCaptureTelemetry(
-                filtering: .init(requestedEnabled: true, filteredSampleCount: 1),
-                motion: .init(status: .unavailable)
-            ).validate(manifest: manifest)
-        }
-        var observedMotion = TAPVideoCaptureTelemetry.Motion(
-            status: .available,
-            motionToCaptureOffsetSeconds: -100,
-            samples: [.init(ptsSeconds: 0.1, quaternion: [0, 0, 0, 1], rotationRate: [0, 0, 0], gravity: [0, -1, 0], userAcceleration: [0, 0, 0])]
+        try TAPVideoCaptureTelemetryBox.append(telemetry, to: fileURL)
+        let layout = try TAPVideoContainerLayout.read(from: fileURL)
+        let box = try #require(layout.topLevelBoxes.first { $0.userType == TAPVideoCaptureTelemetryBox.uuid })
+        let payload = try TAPBMFFStreamingFile.read(
+            box.payloadRange, from: fileURL, maximumByteCount: TAPVideoCaptureTelemetryBox.maximumByteCount
         )
-        try TAPVideoCaptureTelemetry(filtering: .init(requestedEnabled: false), motion: observedMotion).validate(manifest: manifest)
-        observedMotion.samples.append(observedMotion.samples[0])
+        #expect(try JSONDecoder().decode(TAPVideoCaptureTelemetry.self, from: payload) == telemetry)
         #expect(throws: TAPDepthCaptureError.self) {
-            try TAPVideoCaptureTelemetry(filtering: .init(requestedEnabled: false), motion: observedMotion).validate(manifest: manifest)
-        }
-        observedMotion.samples = []
-        #expect(throws: TAPDepthCaptureError.self) {
-            try TAPVideoCaptureTelemetry(filtering: .init(requestedEnabled: false), motion: observedMotion).validate(manifest: manifest)
+            try TAPVideoCaptureTelemetryBox.append(telemetry, to: fileURL)
         }
     }
 
@@ -111,39 +73,6 @@ struct TAPVideoManifestTests {
         #expect(!request.depthFilteringEnabled)
         #expect(DepthAnalyzerPreferences.playbackSmoothingEnabled(defaults: defaults))
         #endif
-    }
-
-    @Test func captureTelemetryAcceptsNumberSpellingsButRejectsNoncanonicalStructure() throws {
-        let manifest = TAPVideoManifest(payload: Self.samplePayload(depthCoverage: .none))
-        let telemetry = TAPVideoCaptureTelemetry(
-            filtering: .init(requestedEnabled: false),
-            motion: .init(
-                status: .available,
-                motionToCaptureOffsetSeconds: -100,
-                samples: [.init(ptsSeconds: 0.1, quaternion: [0, 0, 0, 1], rotationRate: [0, 0, 0], gravity: [0, -1, 0], userAcceleration: [0, 0, 0])]
-            )
-        )
-        let data = try JSONEncoder.tapCaptureCanonical.encode(telemetry)
-        let canonical = String(decoding: data, as: UTF8.self)
-        func read(_ json: String) throws -> TAPVideoCaptureTelemetry? {
-            let url = try Self.makeTemporaryFile(data: Self.bmffBox(
-                type: "uuid", payload: TAPVideoCaptureTelemetryBox.uuid + Data(json.utf8)
-            ))
-            return try TAPVideoCaptureTelemetryBox.read(from: url, manifest: manifest)
-        }
-        let equivalentNumbers = canonical
-            .replacingOccurrences(of: "\"ptsSeconds\":0.1", with: "\"ptsSeconds\":1e-1")
-            .replacingOccurrences(of: "\"gravity\":[0,-1,0]", with: "\"gravity\":[0.0,-1.0,0e0]")
-        #expect(equivalentNumbers != canonical)
-        #expect(try read(equivalentNumbers) == telemetry)
-        for malformed in [
-            " " + canonical,
-            canonical.replacingOccurrences(of: "\"filteredSampleCount\":0", with: "\"filteredSampleCount\":0.0"),
-            canonical.replacingOccurrences(of: "\"requestedEnabled\":false", with: "\"requestedEnabled\":false,\"requestedEnabled\":false"),
-            "{\"alien\":0," + canonical.dropFirst()
-        ] {
-            #expect(throws: (any Error).self) { try read(malformed) }
-        }
     }
 
     @Test func calibrationCoverageRejectsOverflowWithoutTrapping() {

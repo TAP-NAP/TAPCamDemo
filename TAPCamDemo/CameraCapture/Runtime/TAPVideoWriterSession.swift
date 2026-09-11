@@ -183,7 +183,7 @@ nonisolated final class TAPVideoWriterSession: @unchecked Sendable {
         telemetry: TAPVideoCaptureTelemetry,
         to outputURL: URL
     ) throws {
-        try TAPVideoCaptureTelemetryBox.append(telemetry, manifest: manifest, to: writerURL)
+        try TAPVideoCaptureTelemetryBox.append(telemetry, to: writerURL)
         try TAPVideoManifestBox.appendManifest(manifest, toFileAt: writerURL)
         TAPVideoPerformanceTrace.emitManifestAppended(
             byteCount: try TAPBMFFStreamingFile.byteCount(of: writerURL)

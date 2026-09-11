@@ -622,13 +622,7 @@ nonisolated enum TAPVideoManifestEncoder {
 
     static func decodedDocument(from manifestData: Data) throws -> TAPVideoManifestDocument {
         let manifest = try JSONDecoder().decode(TAPVideoManifest.self, from: manifestData)
-        let canonicalManifestData = try self.manifestData(manifest)
-        let canonicalPayloadData = try payloadDataExcludingProofs(manifest.payload)
-        let rawPayloadData = try TAPCanonicalManifestPayload.rawPayloadData(
-            in: manifestData,
-            canonicalManifestData: canonicalManifestData,
-            canonicalPayloadData: canonicalPayloadData
-        )
+        let rawPayloadData = try TAPManifestPayloadBytes.rawPayloadData(in: manifestData)
         return TAPVideoManifestDocument(
             manifest: manifest,
             rawPayloadData: rawPayloadData
