@@ -220,7 +220,7 @@ actor TAPPendingCaptureProcessor {
             let status: TAPPendingCaptureStatus = mustRemainInVideoRecovery
                 ? .exporting
                 : TAPPendingCaptureRetryClassifier.status(for: error)
-            let failureReason = TAPPendingCaptureFailureReasonPresentation.reason(for: status)
+            let failureReason = TAPPendingCaptureFailureReason.reason(for: status)
             #if DEBUG
             TAPDiagnostics.pendingCapture.error("process failed captureID=\(record.captureID, privacy: .private) previousStatus=\(record.status.rawValue, privacy: .public) nextStatus=\(status.rawValue, privacy: .public) retryCount=\(record.retryCount + 1, privacy: .public) vpnHint=\(TAPDiagnostics.errorLooksVPNRelated(error), privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif

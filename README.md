@@ -30,7 +30,7 @@ content binding. Their v1 format identifiers remain unchanged.
 ```mermaid
 flowchart LR
     App["App\nsetup + route + App Attest"] --> Camera["CameraCapture\nplan + SingleCam + package"]
-    Camera --> Queue["TAPLibrary\nprivate pending queue"]
+    Camera --> Queue["PendingCaptureQueue\nprivate pending queue"]
     Queue --> Photos["Photos\nvalidated export"]
     Photos --> Media["MediaLibrary\nPhotoKit + media catalog"]
     Queue --> Media
@@ -46,7 +46,7 @@ user intent
   -> CameraCapture/Runtime serial AVCaptureSession configuration
   -> paired AVCapturePhoto or finalized TAP Video
   -> CameraCapture/Output unsigned reviewed artifact
-  -> TAPLibrary atomic pending ingest
+  -> PendingCaptureQueue atomic pending ingest
   -> serialized App Attest proof + final-byte validation
   -> Photos save + original-resource readback validation
   -> Viewer library / photo and video browsing
@@ -66,7 +66,7 @@ user intent
 | `CameraCapture/Runtime` | the only `AVCaptureSession` mutation, capture requests, device writes, TAP Video recording, cached capture location | `CaptureSessionController.swift`, `CapturePipeline.swift`, `TAPVideoRecorder.swift`, `LocationProvider.swift` |
 | `CameraCapture/Output` | reviewed output profiles, packaging, shared-contract encoders/writers, final signed-export gates | `CaptureOutputProfile.swift`, `EmbeddedPhotoPackager.swift`, `TAPCaptureProvenanceWriter.swift` |
 | `CameraCapture/UI` | Viewfinder presentation and user intent; no capture-plan or proof ownership | `CameraView.swift`, `CameraViewModel.swift` |
-| `TAPLibrary` | private pending storage, one serialized signing/export worker, retry, readback, cleanup | `TAPPendingCaptureStore.swift`, `TAPPendingCaptureProcessor.swift` |
+| `PendingCaptureQueue` | private pending storage, one serialized signing/export worker, retry, readback, cleanup | `TAPPendingCaptureStore.swift`, `TAPPendingCaptureProcessor.swift` |
 | `MediaLibrary` | PhotoKit access and cancellation, catalog reconciliation/publication, thumbnails, resource identity | `LibraryMediaStore.swift`, `DepthAlbumItemProvider.swift`, `PhotoKitLibraryMediaFetcher.swift` |
 | `Viewer` | library grid, paging/zoom, photo and video playback, Share/Delete, browsing state | `Library/DepthAlbumPickerView.swift`, `Photo/DepthAnalysisView.swift`, `Playback/TAPVideoPlaybackSession.swift` |
 | `DepthAnalysis` | depth decoding/validation, heatmaps, planes, point clouds, registered video depth | `DepthAnalysisReader.swift`, `DepthAnalysisStageView.swift`, `Video/TAPVideoDepthPipeline.swift` |

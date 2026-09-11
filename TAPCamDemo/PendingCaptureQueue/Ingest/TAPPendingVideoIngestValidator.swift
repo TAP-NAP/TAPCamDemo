@@ -11,7 +11,7 @@ nonisolated enum TAPPendingVideoIngestValidator {
         expectedWorkspaceURL: URL
     ) throws -> TAPVideoManifest {
         let expectedArtifactURL = expectedWorkspaceURL.appendingPathComponent(
-            TAPPendingCaptureBundlePathPolicy.videoArtifactFilename
+            TAPPendingCaptureBundlePaths.videoArtifactFilename
         )
         guard artifact.videoURL.standardizedFileURL
                 == expectedArtifactURL.standardizedFileURL else {

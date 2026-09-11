@@ -638,7 +638,7 @@ nonisolated enum PhotoLibraryWriter {
             if let pairedVideoURL {
                 let videoOptions = PHAssetResourceCreationOptions()
                 videoOptions.uniformTypeIdentifier = UTType.quickTimeMovie.identifier
-                videoOptions.originalFilename = TAPPendingCaptureBundlePathPolicy.pairedVideoFilename
+                videoOptions.originalFilename = TAPPendingCaptureBundlePaths.pairedVideoFilename
                 videoOptions.shouldMoveFile = false
                 creationRequest.addResource(with: .pairedVideo, fileURL: pairedVideoURL, options: videoOptions)
             }

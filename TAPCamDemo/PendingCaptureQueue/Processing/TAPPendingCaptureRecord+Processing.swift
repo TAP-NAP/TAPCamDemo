@@ -1,5 +1,5 @@
 //
-//  TAPPendingCaptureProcessingPolicy.swift
+//  TAPPendingCaptureRecord+Processing.swift
 //  TAPCamDemo
 //
 //  Created by Codex on 2026/6/11.

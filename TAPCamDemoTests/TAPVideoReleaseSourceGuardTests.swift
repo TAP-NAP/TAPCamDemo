@@ -22,7 +22,7 @@ struct TAPVideoReleaseSourceGuardTests {
         "TAPCamDemo/DepthAnalysis/Video/TAPVideoDepthMetadataReader.swift",
         "TAPCamDemo/DepthAnalysis/Video/TAPVideoDepthPipeline.swift",
         "TAPCamDemo/DepthAnalysis/Video/TAPVideoDepthRegistration.swift",
-        "TAPCamDemo/TAPLibrary/TAPVideoPhotosReadbackValidator.swift"
+        "TAPCamDemo/PendingCaptureQueue/Processing/TAPVideoPhotosReadbackValidator.swift"
     ]
 
     private static let wholeFileDataPattern = #"Data\s*\(\s*contentsOf\s*:"#

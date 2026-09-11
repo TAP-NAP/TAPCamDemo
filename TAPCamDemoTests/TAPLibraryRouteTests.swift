@@ -217,7 +217,7 @@ struct TAPLibraryRouteTests {
             pixelLength: 240,
             capturedAt: Date(timeIntervalSince1970: 1_000),
             thumbnailFilename: nil,
-            videoFilename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
+            videoFilename: TAPPendingCaptureBundlePaths.videoArtifactFilename,
             updatedAt: Date(timeIntervalSince1970: 1_001)
         )
         let signedKey = DepthAlbumThumbnailCacheKey.makePending(
@@ -225,7 +225,7 @@ struct TAPLibraryRouteTests {
             pixelLength: 240,
             capturedAt: Date(timeIntervalSince1970: 1_000),
             thumbnailFilename: nil,
-            videoFilename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
+            videoFilename: TAPPendingCaptureBundlePaths.videoArtifactFilename,
             updatedAt: Date(timeIntervalSince1970: 1_002)
         )
 
@@ -274,7 +274,7 @@ struct TAPLibraryRouteTests {
         let livePending = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "pending-live",
             capturedAt: Date(timeIntervalSince1970: 400),
-            pairedVideoFilename: TAPPendingCaptureBundlePathPolicy.pairedVideoFilename
+            pairedVideoFilename: TAPPendingCaptureBundlePaths.pairedVideoFilename
         )
         let plainPending = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: "pending-plain",
@@ -284,7 +284,7 @@ struct TAPLibraryRouteTests {
             captureID: "exported-live",
             capturedAt: Date(timeIntervalSince1970: 200),
             status: .exported,
-            pairedVideoFilename: TAPPendingCaptureBundlePathPolicy.pairedVideoFilename,
+            pairedVideoFilename: TAPPendingCaptureBundlePaths.pairedVideoFilename,
             assetLocalIdentifier: "asset-owned"
         )
         let ownedAsset = DepthAlbumPhotoAsset(
@@ -610,7 +610,7 @@ struct TAPLibraryRouteTests {
         let pendingRecord = TAPCamDemoTestFixtures.samplePendingRecord(
             captureID: captureID,
             capturedAt: Date(timeIntervalSince1970: 100),
-            thumbnailFilename: TAPPendingCaptureBundlePathPolicy.thumbnailFilename
+            thumbnailFilename: TAPPendingCaptureBundlePaths.thumbnailFilename
         )
 
         let item = try #require(TAPLibraryItem.merged(

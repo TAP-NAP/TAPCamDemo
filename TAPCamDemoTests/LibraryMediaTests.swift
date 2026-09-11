@@ -301,7 +301,7 @@ struct LibraryMediaTests {
             capturedAt: capturedAt
         )
         var revisedRecord = originalRecord
-        revisedRecord.thumbnailFilename = TAPPendingCaptureBundlePathPolicy.thumbnailFilename
+        revisedRecord.thumbnailFilename = TAPPendingCaptureBundlePaths.thumbnailFilename
         revisedRecord.posterRevision = 1
         revisedRecord.updatedAt = capturedAt.addingTimeInterval(1)
 

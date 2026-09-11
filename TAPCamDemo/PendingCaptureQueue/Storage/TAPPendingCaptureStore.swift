@@ -100,8 +100,8 @@ actor TAPPendingCaptureStore {
     private(set) var ingestionGeneration: UInt64 = 0
 
     init(
-        rootURL: URL = TAPPendingCaptureRoot.defaultURL,
-        storagePolicy: TAPLocalArtifactStoragePolicy = .privatePhotoArtifact,
+        rootURL: URL = TAPPendingCaptureBundlePaths.defaultRootURL,
+        storagePolicy: TAPLocalArtifactFileProtection = .privatePhotoArtifact,
         fileManager: FileManager = .default,
         shareSnapshotLinker: @escaping @Sendable (URL, URL) throws -> Void = { sourceURL, destinationURL in
             try FileManager.default.linkItem(at: sourceURL, to: destinationURL)
@@ -148,7 +148,7 @@ actor TAPPendingCaptureStore {
         let pairedVideoFilename: String?
         if let livePhotoMovie = artifact.livePhotoMovie {
             try storage.copyPairedVideo(from: livePhotoMovie.fileURL, to: temporaryURL)
-            pairedVideoFilename = TAPPendingCaptureBundlePathPolicy.pairedVideoFilename
+            pairedVideoFilename = TAPPendingCaptureBundlePaths.pairedVideoFilename
         } else {
             pairedVideoFilename = nil
         }
@@ -156,7 +156,7 @@ actor TAPPendingCaptureStore {
         let thumbnailFilename: String?
         if let thumbnailData = TAPPendingCaptureThumbnailRenderer.thumbnailData(from: artifact.photoData) {
             try storage.writeThumbnail(thumbnailData, to: temporaryURL)
-            thumbnailFilename = TAPPendingCaptureBundlePathPolicy.thumbnailFilename
+            thumbnailFilename = TAPPendingCaptureBundlePaths.thumbnailFilename
         } else {
             thumbnailFilename = nil
         }
@@ -219,7 +219,7 @@ actor TAPPendingCaptureStore {
             captureScoreSummary: artifact.captureScoreSummary,
             unsignedPhotoFilename: nil,
             signedPhotoFilename: nil,
-            videoArtifactFilename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
+            videoArtifactFilename: TAPPendingCaptureBundlePaths.videoArtifactFilename,
             videoArtifactState: .unsigned,
             posterRevision: 1,
             exportResourceFilename: PhotoLibraryWriter.tapVideoResourceFilename(
@@ -292,7 +292,7 @@ actor TAPPendingCaptureStore {
                 return false
             }
             return (try? storage.videoURL(
-                filename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
+                filename: TAPPendingCaptureBundlePaths.videoArtifactFilename,
                 captureID: record.captureID
             )) != nil
         }
@@ -314,7 +314,7 @@ actor TAPPendingCaptureStore {
         }
         let bundleURL = try storage.bundleURL(captureID: captureID)
         try storage.writeThumbnail(data, to: bundleURL)
-        record.thumbnailFilename = TAPPendingCaptureBundlePathPolicy.thumbnailFilename
+        record.thumbnailFilename = TAPPendingCaptureBundlePaths.thumbnailFilename
         record.posterRevision = posterRevision
         record.updatedAt = Date()
         try storage.writeRecord(record)
@@ -917,7 +917,7 @@ actor TAPPendingCaptureStore {
     func updateStatus(
         captureID: String,
         status: TAPPendingCaptureStatus,
-        failureReason: TAPPendingCaptureFailureReasonPresentation.Reason? = nil,
+        failureReason: TAPPendingCaptureFailureReason.Reason? = nil,
         failureCode: TAPPendingCaptureFailureCode? = nil,
         incrementsRetryCount: Bool = false
     ) throws -> TAPPendingCaptureRecord {
@@ -929,7 +929,7 @@ actor TAPPendingCaptureStore {
             return record
         }
         record.status = status
-        record.failureReason = TAPPendingCaptureFailureReasonPresentation.normalizedPersistedFailureReason(
+        record.failureReason = TAPPendingCaptureFailureReason.normalizedPersistedFailureReason(
             failureReason,
             status: status
         )
@@ -977,7 +977,7 @@ actor TAPPendingCaptureStore {
         var record = try readRecord(captureID: captureID)
         record.status = .failedTerminal
         record.failureCode = code
-        record.failureReason = TAPPendingCaptureFailureReasonPresentation.persistedFailureReason(
+        record.failureReason = TAPPendingCaptureFailureReason.persistedFailureReason(
             for: .terminalFailure
         )
         if let assetLocalIdentifier {

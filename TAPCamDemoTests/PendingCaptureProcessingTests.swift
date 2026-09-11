@@ -1,5 +1,5 @@
 //
-//  TAPLibraryProcessingTests.swift
+//  PendingCaptureProcessingTests.swift
 //  TAPCamDemoTests
 //
 
@@ -7,7 +7,7 @@ import Foundation
 import Testing
 @testable import TAPCamDemo
 
-struct TAPLibraryProcessingTests {
+struct PendingCaptureProcessingTests {
     @Test func pendingCaptureWorkerReadinessRequiresProtectedData() throws {
         let ready = TAPPendingCaptureWorkerReadiness(protectedDataIsAvailable: true)
         let locked = TAPPendingCaptureWorkerReadiness(protectedDataIsAvailable: false)
@@ -416,10 +416,10 @@ struct TAPLibraryProcessingTests {
 
     @Test func pendingCaptureFailureReasonPresentationOmitsRawIdentifiersAndPaths() throws {
         let reasons = [
-            TAPPendingCaptureFailureReasonPresentation.persistedFailureReason(
+            TAPPendingCaptureFailureReason.persistedFailureReason(
                 for: TAPPendingCaptureStatus.waitingNetwork
             ),
-            TAPPendingCaptureFailureReasonPresentation.persistedFailureReason(
+            TAPPendingCaptureFailureReason.persistedFailureReason(
                 for: TAPPendingCaptureStatus.failedRetryable
             )
         ]

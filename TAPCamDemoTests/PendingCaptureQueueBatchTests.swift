@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TAPCamDemo
 
-struct TAPLibraryQueueBatchTests {
+struct PendingCaptureQueueBatchTests {
     @Test(arguments: [1, 12])
     func workerScansOncePerBatchAndVisitsFailuresOnce(captureCount: Int) async throws {
         let root = try TAPCamDemoTestFixtures.makeTemporaryDirectory()

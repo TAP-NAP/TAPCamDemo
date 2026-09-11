@@ -1,5 +1,5 @@
 //
-//  TAPPendingCaptureFailureReasonPresentation.swift
+//  TAPPendingCaptureFailureReason.swift
 //  TAPCamDemo
 //
 //  Created by Codex on 2026/6/11.
@@ -13,7 +13,7 @@ import Foundation
 /// IDs, proof state, backend URLs, or Photos identifiers. The worker may still
 /// inspect raw errors for retry classification and diagnostics, but
 /// `TAPPendingCaptureRecord.failureReason` should keep only fixed status text.
-nonisolated enum TAPPendingCaptureFailureReasonPresentation {
+nonisolated enum TAPPendingCaptureFailureReason {
     enum Reason: Equatable, Sendable {
         case waitingNetwork
         case retryableProcessingFailure

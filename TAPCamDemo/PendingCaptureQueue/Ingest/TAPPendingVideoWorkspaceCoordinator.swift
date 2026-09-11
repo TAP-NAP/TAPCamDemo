@@ -23,7 +23,7 @@ nonisolated struct TAPPendingVideoWorkspaceCoordinator {
             captureID: captureID,
             bundleURL: bundleURL,
             artifactURL: bundleURL.appendingPathComponent(
-                TAPPendingCaptureBundlePathPolicy.videoArtifactFilename
+                TAPPendingCaptureBundlePaths.videoArtifactFilename
             )
         )
     }
@@ -62,7 +62,7 @@ nonisolated struct TAPPendingVideoWorkspaceCoordinator {
 
     private static func captureID(for workspaceURL: URL) -> String {
         String(workspaceURL.lastPathComponent.dropFirst(
-            TAPPendingCaptureBundlePathPolicy.videoCaptureWorkspacePrefix.count
+            TAPPendingCaptureBundlePaths.videoCaptureWorkspacePrefix.count
         ))
     }
 }

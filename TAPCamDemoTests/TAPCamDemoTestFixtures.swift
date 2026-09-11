@@ -493,7 +493,7 @@ enum TAPCamDemoTestFixtures {
             artifactKind: .tapVideo,
             unsignedPhotoFilename: nil,
             signedPhotoFilename: nil,
-            videoArtifactFilename: TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
+            videoArtifactFilename: TAPPendingCaptureBundlePaths.videoArtifactFilename,
             videoArtifactState: videoArtifactState,
             thumbnailFilename: nil,
             assetLocalIdentifier: assetLocalIdentifier,

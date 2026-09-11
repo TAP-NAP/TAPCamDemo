@@ -21,11 +21,11 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     let rootURL: URL
 
     private let fileManager: FileManager
-    private let storagePolicy: TAPLocalArtifactStoragePolicy
+    private let storagePolicy: TAPLocalArtifactFileProtection
 
     init(
         rootURL: URL,
-        storagePolicy: TAPLocalArtifactStoragePolicy,
+        storagePolicy: TAPLocalArtifactFileProtection,
         fileManager: FileManager = .default
     ) {
         self.rootURL = rootURL
@@ -38,7 +38,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     }
 
     func bundleURL(captureID: String) throws -> URL {
-        try TAPPendingCaptureBundlePathPolicy.bundleURL(rootURL: rootURL, captureID: captureID)
+        try TAPPendingCaptureBundlePaths.bundleURL(rootURL: rootURL, captureID: captureID)
     }
 
     func temporaryBundleURL() -> URL {
@@ -46,7 +46,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     }
 
     func videoCaptureWorkspaceURL(captureID: String) throws -> URL {
-        try TAPPendingCaptureBundlePathPolicy.videoCaptureWorkspaceURL(
+        try TAPPendingCaptureBundlePaths.videoCaptureWorkspaceURL(
             rootURL: rootURL,
             captureID: captureID
         )
@@ -109,7 +109,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         )
         .filter { url in
             url.lastPathComponent.hasPrefix(
-                TAPPendingCaptureBundlePathPolicy.videoCaptureWorkspacePrefix
+                TAPPendingCaptureBundlePaths.videoCaptureWorkspacePrefix
             ) && (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         }
     }
@@ -118,7 +118,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         guard workspaceURL.deletingLastPathComponent().standardizedFileURL
                 == rootURL.standardizedFileURL,
               workspaceURL.lastPathComponent.hasPrefix(
-                TAPPendingCaptureBundlePathPolicy.videoCaptureWorkspacePrefix
+                TAPPendingCaptureBundlePaths.videoCaptureWorkspacePrefix
               ) else {
             throw TAPDepthCaptureError.invalidPendingCaptureBundlePath(
                 "stale video workspace must remain inside the pending root"
@@ -144,13 +144,13 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     func writeThumbnail(_ data: Data, to bundleURL: URL) throws {
         try storagePolicy.write(
             data,
-            to: bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.thumbnailFilename),
+            to: bundleURL.appendingPathComponent(TAPPendingCaptureBundlePaths.thumbnailFilename),
             fileManager: fileManager
         )
     }
 
     func copyPairedVideo(from sourceURL: URL, to bundleURL: URL) throws {
-        let destinationURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.pairedVideoFilename)
+        let destinationURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePaths.pairedVideoFilename)
         if fileManager.fileExists(atPath: destinationURL.path) {
             try fileManager.removeItem(at: destinationURL)
         }
@@ -164,7 +164,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     ) throws {
         try storagePolicy.write(
             data,
-            to: TAPPendingCaptureBundlePathPolicy.artifactURL(
+            to: TAPPendingCaptureBundlePaths.artifactURL(
                 rootURL: rootURL,
                 captureID: captureID,
                 filename: fileContainer.signedFilename
@@ -184,9 +184,9 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         in bundleURL: URL,
         expectedCaptureID: String? = nil
     ) throws -> TAPPendingCaptureRecord {
-        let data = try Data(contentsOf: TAPPendingCaptureBundlePathPolicy.recordURL(bundleURL: bundleURL))
+        let data = try Data(contentsOf: TAPPendingCaptureBundlePaths.recordURL(bundleURL: bundleURL))
         let record = try TAPPendingCaptureRecordCoding.decode(from: data)
-        try TAPPendingCaptureBundlePathPolicy.validateRecord(record, expectedCaptureID: expectedCaptureID)
+        try TAPPendingCaptureBundlePaths.validateRecord(record, expectedCaptureID: expectedCaptureID)
         return record
     }
 
@@ -195,7 +195,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         expectedCaptureID: String? = nil
     ) throws -> TAPPendingCaptureRecord {
         var record = try readStoredRecord(in: bundleURL, expectedCaptureID: expectedCaptureID)
-        record.failureReason = TAPPendingCaptureFailureReasonPresentation.normalizedStoredFailureReason(
+        record.failureReason = TAPPendingCaptureFailureReason.normalizedStoredFailureReason(
             record.failureReason,
             status: record.status
         )
@@ -217,7 +217,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     }
 
     func photoURLIfPresent(filename: String, captureID: String) throws -> URL? {
-        let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(
+        let url = try TAPPendingCaptureBundlePaths.artifactURL(
             rootURL: rootURL,
             captureID: captureID,
             filename: filename
@@ -229,7 +229,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     }
 
     func thumbnailData(filename: String, captureID: String) throws -> Data? {
-        try? Data(contentsOf: TAPPendingCaptureBundlePathPolicy.artifactURL(
+        try? Data(contentsOf: TAPPendingCaptureBundlePaths.artifactURL(
             rootURL: rootURL,
             captureID: captureID,
             filename: filename
@@ -237,7 +237,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     }
 
     func pairedVideoURL(filename: String, captureID: String) throws -> URL {
-        let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(
+        let url = try TAPPendingCaptureBundlePaths.artifactURL(
             rootURL: rootURL,
             captureID: captureID,
             filename: filename
@@ -249,7 +249,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     }
 
     func videoURLIfPresent(filename: String, captureID: String) throws -> URL? {
-        let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(
+        let url = try TAPPendingCaptureBundlePaths.artifactURL(
             rootURL: rootURL,
             captureID: captureID,
             filename: filename
@@ -520,11 +520,11 @@ nonisolated struct TAPPendingCaptureBundleStorage {
     }
 
     func writeRecord(_ record: TAPPendingCaptureRecord, in bundleURL: URL) throws {
-        try TAPPendingCaptureBundlePathPolicy.validateRecord(record)
+        try TAPPendingCaptureBundlePaths.validateRecord(record)
         let data = try TAPPendingCaptureRecordCoding.encode(record)
         try storagePolicy.write(
             data,
-            to: TAPPendingCaptureBundlePathPolicy.recordURL(bundleURL: bundleURL),
+            to: TAPPendingCaptureBundlePaths.recordURL(bundleURL: bundleURL),
             fileManager: fileManager
         )
     }
@@ -540,9 +540,9 @@ nonisolated struct TAPPendingCaptureBundleStorage {
         attemptID: UUID,
         preparationFault: @Sendable (TAPPendingCaptureRecord) throws -> Void
     ) throws {
-        try TAPPendingCaptureBundlePathPolicy.validateRecord(record)
+        try TAPPendingCaptureBundlePaths.validateRecord(record)
         let bundleURL = try bundleURL(captureID: record.captureID)
-        let recordURL = TAPPendingCaptureBundlePathPolicy.recordURL(
+        let recordURL = TAPPendingCaptureBundlePaths.recordURL(
             bundleURL: bundleURL
         )
         let temporaryURL = bundleURL.appendingPathComponent(
@@ -606,7 +606,7 @@ nonisolated struct TAPPendingCaptureBundleStorage {
             record.videoArtifactFilename,
             record.pairedVideoFilename
         ].compactMap({ $0 }) {
-            let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(
+            let url = try TAPPendingCaptureBundlePaths.artifactURL(
                 rootURL: rootURL,
                 captureID: record.captureID,
                 filename: filename

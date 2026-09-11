@@ -1,5 +1,5 @@
 //
-//  TAPPendingCaptureBundlePathPolicy.swift
+//  TAPPendingCaptureBundlePaths.swift
 //  TAPCamDemo
 //
 
@@ -10,7 +10,20 @@ import Foundation
 /// Normal captures use UUID-like manifest IDs, but this policy keeps future
 /// import, repair, migration, or test paths from turning a persisted identifier
 /// or filename into an arbitrary filesystem path.
-nonisolated enum TAPPendingCaptureBundlePathPolicy {
+nonisolated enum TAPPendingCaptureBundlePaths {
+    static var defaultRootURL: URL {
+        let baseURL = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? FileManager.default.temporaryDirectory
+        return baseURL
+            .appendingPathComponent("TAPCaptureLibrary", isDirectory: true)
+            .appendingPathComponent(
+                TAPPendingCaptureBundlePaths.recordsDirectoryName,
+                isDirectory: true
+            )
+    }
+
     static let recordsDirectoryName = "Pending"
     static let videoCaptureWorkspacePrefix = ".recording-"
     static let recordFilename = "bundle.json"

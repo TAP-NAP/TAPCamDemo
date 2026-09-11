@@ -1,5 +1,5 @@
 //
-//  TAPLocalArtifactStoragePolicy.swift
+//  TAPLocalArtifactFileProtection.swift
 //  TAPCamDemo
 //
 
@@ -10,10 +10,10 @@ import Foundation
 /// Read this file before adding another local HEIC, manifest, thumbnail, or
 /// cache write. The policy keeps protection behavior explicit at the write
 /// boundary instead of relying on each call site to remember file attributes.
-nonisolated struct TAPLocalArtifactStoragePolicy {
+nonisolated struct TAPLocalArtifactFileProtection {
     let fileProtectionType: FileProtectionType
 
-    static let privatePhotoArtifact = TAPLocalArtifactStoragePolicy(
+    static let privatePhotoArtifact = TAPLocalArtifactFileProtection(
         fileProtectionType: .completeUntilFirstUserAuthentication
     )
 

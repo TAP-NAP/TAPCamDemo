@@ -324,7 +324,7 @@ nonisolated struct TAPPhotoOriginalResourceLoader: Sendable {
         },
         directoryProvider: @escaping DirectoryProvider = Self.defaultDirectory,
         resourceProtector: @escaping ResourceProtector = {
-            try TAPLocalArtifactStoragePolicy.privatePhotoArtifact.protectDirectoryTree(at: $0)
+            try TAPLocalArtifactFileProtection.privatePhotoArtifact.protectDirectoryTree(at: $0)
         }
     ) {
         self.photoLibraryLoader = photoLibraryLoader

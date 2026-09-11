@@ -50,13 +50,13 @@ nonisolated struct CameraRouteFileContextStore {
     private let contextURL: URL
     private let secretURL: URL
     private let fileManager: FileManager
-    private let storagePolicy: TAPLocalArtifactStoragePolicy
+    private let storagePolicy: TAPLocalArtifactFileProtection
     private let secretKey: SymmetricKey
 
     init(
         directoryURL: URL? = nil,
         fileManager: FileManager = .default,
-        storagePolicy: TAPLocalArtifactStoragePolicy = .privatePhotoArtifact
+        storagePolicy: TAPLocalArtifactFileProtection = .privatePhotoArtifact
     ) {
         self.fileManager = fileManager
         self.storagePolicy = storagePolicy
@@ -107,7 +107,7 @@ nonisolated struct CameraRouteFileContextStore {
 
     private static func loadOrCreateSecretKey(
         at url: URL,
-        storagePolicy: TAPLocalArtifactStoragePolicy,
+        storagePolicy: TAPLocalArtifactFileProtection,
         fileManager: FileManager
     ) -> SymmetricKey {
         if let data = try? Data(contentsOf: url), !data.isEmpty {

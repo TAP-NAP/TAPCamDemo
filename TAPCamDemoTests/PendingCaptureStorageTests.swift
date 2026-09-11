@@ -1,5 +1,5 @@
 //
-//  TAPLibraryStorageTests.swift
+//  PendingCaptureStorageTests.swift
 //  TAPCamDemoTests
 //
 
@@ -8,7 +8,7 @@ import Foundation
 import Testing
 @testable import TAPCamDemo
 
-struct TAPLibraryStorageTests {
+struct PendingCaptureStorageTests {
     @Test func pendingCaptureStorePersistsLedgerAcrossInstances() async throws {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let store = TAPPendingCaptureStore(rootURL: rootURL)
@@ -104,7 +104,7 @@ struct TAPLibraryStorageTests {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let store = TAPPendingCaptureStore(rootURL: rootURL)
         let record = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(photoData: Data("unsigned".utf8)))
-        let expectedProtection = TAPLocalArtifactStoragePolicy.privatePhotoArtifact.fileProtectionType
+        let expectedProtection = TAPLocalArtifactFileProtection.privatePhotoArtifact.fileProtectionType
         let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
 
         #expect(expectedProtection == .completeUntilFirstUserAuthentication)
@@ -159,10 +159,10 @@ struct TAPLibraryStorageTests {
             )
         ))
         let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
-        let pairedVideoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.pairedVideoFilename)
+        let pairedVideoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePaths.pairedVideoFilename)
         let storedPairedVideoURL = try #require(await store.pairedVideoURL(captureID: record.captureID))
 
-        #expect(record.pairedVideoFilename == TAPPendingCaptureBundlePathPolicy.pairedVideoFilename)
+        #expect(record.pairedVideoFilename == TAPPendingCaptureBundlePaths.pairedVideoFilename)
         #expect(FileManager.default.fileExists(atPath: pairedVideoURL.path))
         #expect(try Data(contentsOf: storedPairedVideoURL) == Data("paired-video".utf8))
 
@@ -193,11 +193,11 @@ struct TAPLibraryStorageTests {
             videoURL: videoURL
         ))
         let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
-        let artifactURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.videoArtifactFilename)
+        let artifactURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePaths.videoArtifactFilename)
 
         #expect(record.artifactKind == .tapVideo)
         #expect(record.unsignedPhotoFilename == nil)
-        #expect(record.videoArtifactFilename == TAPPendingCaptureBundlePathPolicy.videoArtifactFilename)
+        #expect(record.videoArtifactFilename == TAPPendingCaptureBundlePaths.videoArtifactFilename)
         #expect(record.videoArtifactState == .unsigned)
         #expect(record.pairedVideoFilename == nil)
         #expect(!FileManager.default.fileExists(atPath: workspaceURL.path))
@@ -367,8 +367,8 @@ struct TAPLibraryStorageTests {
             captureID: record.captureID
         )
         let unsignedBytes = try Data(contentsOf: durableURL)
-        let recordURL = TAPPendingCaptureBundlePathPolicy.recordURL(
-            bundleURL: try TAPPendingCaptureBundlePathPolicy.bundleURL(
+        let recordURL = TAPPendingCaptureBundlePaths.recordURL(
+            bundleURL: try TAPPendingCaptureBundlePaths.bundleURL(
                 rootURL: rootURL,
                 captureID: record.captureID
             )
@@ -559,13 +559,13 @@ struct TAPLibraryStorageTests {
         let rootURL = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         let captureID = "artifact-policy-capture"
         let allowedFilenames = [
-            TAPPendingCaptureBundlePathPolicy.unsignedHEICFilename,
-            TAPPendingCaptureBundlePathPolicy.signedHEICFilename,
-            TAPPendingCaptureBundlePathPolicy.unsignedJPEGFilename,
-            TAPPendingCaptureBundlePathPolicy.signedJPEGFilename,
-            TAPPendingCaptureBundlePathPolicy.videoArtifactFilename,
-            TAPPendingCaptureBundlePathPolicy.pairedVideoFilename,
-            TAPPendingCaptureBundlePathPolicy.thumbnailFilename
+            TAPPendingCaptureBundlePaths.unsignedHEICFilename,
+            TAPPendingCaptureBundlePaths.signedHEICFilename,
+            TAPPendingCaptureBundlePaths.unsignedJPEGFilename,
+            TAPPendingCaptureBundlePaths.signedJPEGFilename,
+            TAPPendingCaptureBundlePaths.videoArtifactFilename,
+            TAPPendingCaptureBundlePaths.pairedVideoFilename,
+            TAPPendingCaptureBundlePaths.thumbnailFilename
         ]
         let unauthorizedFilenames = [
             "c2pa.json",
@@ -577,7 +577,7 @@ struct TAPLibraryStorageTests {
         ]
 
         for filename in allowedFilenames {
-            let url = try TAPPendingCaptureBundlePathPolicy.artifactURL(
+            let url = try TAPPendingCaptureBundlePaths.artifactURL(
                 rootURL: rootURL,
                 captureID: captureID,
                 filename: filename
@@ -589,7 +589,7 @@ struct TAPLibraryStorageTests {
 
         for filename in unauthorizedFilenames {
             do {
-                _ = try TAPPendingCaptureBundlePathPolicy.artifactURL(
+                _ = try TAPPendingCaptureBundlePaths.artifactURL(
                     rootURL: rootURL,
                     captureID: captureID,
                     filename: filename
@@ -1130,12 +1130,12 @@ struct TAPLibraryStorageTests {
             )
         ))
         let bundleURL = rootURL.appendingPathComponent(record.captureID, isDirectory: true)
-        let unsignedPhotoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.unsignedHEICFilename)
-        let pairedVideoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePathPolicy.pairedVideoFilename)
+        let unsignedPhotoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePaths.unsignedHEICFilename)
+        let pairedVideoURL = bundleURL.appendingPathComponent(TAPPendingCaptureBundlePaths.pairedVideoFilename)
 
         #expect(record.status == .pending)
         #expect(record.signedPhotoFilename == nil)
-        #expect(record.pairedVideoFilename == TAPPendingCaptureBundlePathPolicy.pairedVideoFilename)
+        #expect(record.pairedVideoFilename == TAPPendingCaptureBundlePaths.pairedVideoFilename)
         #expect(try await store.bestAvailablePhotoURL(captureID: record.captureID) == unsignedPhotoURL)
         #expect(try await store.pairedVideoURL(captureID: record.captureID) == pairedVideoURL)
         #expect(try Data(contentsOf: unsignedPhotoURL) == Data("unsigned-live-photo".utf8))
