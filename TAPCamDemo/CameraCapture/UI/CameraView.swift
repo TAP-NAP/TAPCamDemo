@@ -308,7 +308,6 @@ struct CameraView: View {
         .onChange(of: scenePhase) { _, phase in
             viewModel.sessionController.setSceneActive(phase == .active)
             if phase != .active {
-                lifecycleCoordinator.cancelCaptureModeChange()
                 cameraPathPreviewWatchdogTask?.cancel()
                 cameraPathPreviewWatchdogTask = nil
                 resourceInitializationMarkerCommitTask?.cancel()
@@ -1998,6 +1997,7 @@ struct CameraView: View {
         focusLoupePulseID = nil
 
         lifecycleCoordinator.cancelCaptureModeChange()
+        beginCameraPathTransition(.resumingPreview)
         viewModel.pauseForAnalysis()
         routeStore.presentDepthAlbum()
     }

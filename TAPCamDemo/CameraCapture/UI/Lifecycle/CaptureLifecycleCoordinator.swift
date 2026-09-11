@@ -23,7 +23,11 @@ final class CaptureLifecycleCoordinator: ObservableObject {
     @MainActor @Published private var libraryReturnTask: (id: UUID, task: Task<Void, Never>)?
 
     @MainActor var isChangingCaptureMode: Bool {
-        captureModeChangeTask != nil || libraryReturnTask != nil
+        captureModeChangeTask != nil || isReturningFromLibrary
+    }
+
+    @MainActor private var isReturningFromLibrary: Bool {
+        libraryReturnTask != nil
     }
 
     nonisolated init() {}
@@ -70,6 +74,14 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         // Keep the gate until any already-started session-queue operation returns.
         captureModeChangeTask?.cancel()
         libraryReturnTask?.task.cancel()
+    }
+
+    @MainActor
+    func suspendForInactiveScene(pauseCamera: () -> Void) {
+        // Preserve foreground recovery intent even if cancellation arrives
+        // during session restart, AF restoration, or video preparation.
+        if isReturningFromLibrary { pauseCamera() }
+        cancelCaptureModeChange()
     }
 
     nonisolated enum LibraryReturnResult: Equatable, Sendable {

@@ -207,8 +207,11 @@ final class PreviewView: UIView {
     // Capture the already-rendered view synchronously, before the session input
     // changes. This is one native snapshot per transition, not a frame pipeline.
     func retainCurrentAppearance() {
-        transitionSnapshot?.removeFromSuperview()
-        transitionSnapshot = nil
+        if let transitionSnapshot {
+            transitionSnapshot.layer.removeAllAnimations()
+            transitionSnapshot.alpha = 1
+            return
+        }
         guard window != nil, videoPreviewLayer.isPreviewing,
               let snapshot = snapshotView(afterScreenUpdates: false) else { return }
         snapshot.frame = bounds
@@ -223,7 +226,8 @@ final class PreviewView: UIView {
         guard let snapshot = transitionSnapshot else { return }
         UIView.animate(withDuration: CameraViewfinderTransitionPresentation.duration, delay: 0, options: [.curveEaseInOut]) {
             snapshot.alpha = 0
-        } completion: { [weak self] _ in
+        } completion: { [weak self] finished in
+            guard finished else { return }
             snapshot.removeFromSuperview()
             if self?.transitionSnapshot === snapshot {
                 self?.transitionSnapshot = nil

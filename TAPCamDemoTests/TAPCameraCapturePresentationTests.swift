@@ -594,8 +594,10 @@ struct TAPCameraCapturePresentationTests {
                 let task = try #require(requestedTask)
                 var iterator = started.makeAsyncIterator()
                 #expect(await iterator.next() != nil)
+                var needsForegroundResume = false
                 if cancelTask {
-                    coordinator.cancelCaptureModeChange()
+                    coordinator.suspendForInactiveScene { needsForegroundResume = true }
+                    #expect(needsForegroundResume, "Cancellation preserves an unfinished Library return")
                 } else {
                     presentation.canResumeCamera = false
                 }
@@ -607,6 +609,17 @@ struct TAPCameraCapturePresentationTests {
                 await task.value
                 #expect(events == (suspendVideo ? ["resume", "video"] : ["resume"]))
                 #expect(!coordinator.isChangingCaptureMode)
+                if cancelTask {
+                    var recovered = false
+                    let recovery = coordinator.depthAlbumPresentationDidChange(
+                        isPresented: false, preparesVideoMode: true,
+                        canResumeCamera: { presentation.canResumeCamera },
+                        resumeAfterAnalysis: { needsForegroundResume = false },
+                        prepareVideoMode: { true }, isCameraReady: { true }, retryPendingCaptures: {},
+                        completion: { recovered = $0 == .videoReady })
+                    await recovery?.value
+                    #expect(recovered && !needsForegroundResume)
+                }
             }
         }
     }

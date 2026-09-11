@@ -360,6 +360,10 @@ extension CameraViewModel {
         beforeImmediateZoom: (@MainActor @Sendable () async throws -> Void)? = nil
     ) async {
         guard !isPausedForAnalysis else {
+            configurationGeneration += 1
+            invalidateVideoPreparation()
+            activeSessionConfiguration = nil
+            hasPendingSelectionReconfiguration = true
             return
         }
 

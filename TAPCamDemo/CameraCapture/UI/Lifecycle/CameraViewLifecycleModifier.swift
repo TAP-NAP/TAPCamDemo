@@ -113,7 +113,7 @@ struct CameraViewLifecycleModifier: ViewModifier {
     private func scenePhaseDidChange(_ phase: ScenePhase) {
         updateIdleTimerForCurrentPresentation()
         if phase != .active {
-            lifecycleCoordinator.cancelCaptureModeChange()
+            lifecycleCoordinator.suspendForInactiveScene(pauseCamera: viewModel.pauseForAnalysis)
         } else if !routeStore.isDepthAlbumPresented, viewModel.isPausedForAnalysis {
             depthAlbumPresentationDidChange(false)
         }

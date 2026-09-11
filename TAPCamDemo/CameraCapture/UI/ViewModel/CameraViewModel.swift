@@ -465,10 +465,16 @@ final class CameraViewModel: ObservableObject {
         isConfiguringSession = false
         reconcileInterruptedPhotographerModeTransition()
         isPausedForAnalysis = false
+        isDepthCaptureReady = false
+        activeSessionConfiguration = nil
         sessionController.stop()
     }
 
     func pauseForAnalysis() {
+        let retainsConfiguration = !isConfiguringSession
+            && !photographerModeState.isTransitioning
+            && !hasPendingSelectionReconfiguration
+            && !isSessionControllerSuspectedWedged
         cancelCameraPathConfigurationWatchdog()
         cancelManualFocusRuntime()
         recentLibraryPreviewRefreshTask?.cancel()
@@ -482,9 +488,9 @@ final class CameraViewModel: ObservableObject {
         reconcileInterruptedPhotographerModeTransition()
         isPausedForAnalysis = true
         isDepthCaptureReady = false
-        activeSessionConfiguration = nil
+        if !retainsConfiguration { activeSessionConfiguration = nil }
         statusMessage = "Camera paused for analysis."
-        sessionController.stop()
+        sessionController.pause()
     }
 
     private func reconcileInterruptedPhotographerModeTransition() {
@@ -506,19 +512,42 @@ final class CameraViewModel: ObservableObject {
             return
         }
 
-        isPausedForAnalysis = false
+        let generation = configurationGeneration
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            if selectedRGBSourceID == nil {
-                await configureDefaultSelection()
+            let resumed: Bool
+            if let activeSessionConfiguration {
+                resumed = await sessionController.resumeIfConfigured(activeSessionConfiguration)
             } else {
-                await configureCurrentSelection()
+                resumed = false
             }
+            guard !Task.isCancelled, generation == configurationGeneration,
+                  isPausedForAnalysis else { return }
+            if resumed, let activeSessionConfiguration {
+                // The Library presents AF on return. Restore that hardware
+                // intent without resetting exposure, PRO mode, or video outputs.
+                await restoreAutoFocus()
+                guard !Task.isCancelled, generation == configurationGeneration,
+                      isPausedForAnalysis else { return }
+                isPausedForAnalysis = false
+                isDepthCaptureReady = activeSessionConfiguration.depthDeliverySupported
+                    && activeSessionConfiguration.capturePlan.canCapturePhotoDepth
+                statusMessage = statusText(for: activeSessionConfiguration.capturePlan)
+            } else {
+                isPausedForAnalysis = false
+                if selectedRGBSourceID == nil {
+                    await configureDefaultSelection()
+                } else {
+                    await configureCurrentSelection()
+                }
+            }
+            guard !Task.isCancelled, !isPausedForAnalysis else { return }
             if CameraCaptureDataUsePreferences.usesLocationData() {
                 locationProvider.warmLocationCache()
             }
             scheduleRecentTAPLibraryPreviewRefresh()
         case .notDetermined:
+            isPausedForAnalysis = false
             await start()
         case .denied, .restricted:
             statusMessage = CameraCaptureStatusPresentation.message(

@@ -48,6 +48,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     // Session-queue-owned intent survives a system interruption. Explicit
     // pause/stop clears it so interruption recovery cannot reopen the camera.
     private var shouldRunSession = false
+    private var canResumeSessionConfiguration = false
     private var isSceneActive = true
     private var focusRuntimeEventHandler: (@Sendable (CaptureSessionFocusRuntimeEvent) -> Void)?
     private var exposureRuntimeEventHandler: (@Sendable (CaptureSessionExposureRuntimeEvent) -> Void)?
@@ -145,6 +146,9 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             #if DEBUG
             TAPDiagnostics.cameraCapture.error("capture session runtime error domain=\(failure.domain, privacy: .public) code=\(failure.code, privacy: .public) mediaServicesReset=\(failure.isMediaServicesReset, privacy: .public)")
             #endif
+            sessionQueue.async { [self] in
+                self.canResumeSessionConfiguration = false
+            }
             stopInterruptedMotionRecording()
             emitRuntimeFailure(failure)
         }
@@ -225,6 +229,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     }
 
     private func applySessionConfiguration(_ request: SessionConfigurationRequest) throws -> SessionConfigurationResult {
+        canResumeSessionConfiguration = false
         discardPreparedVideoRecordingGraphLocked(session: session, reason: "configure")
         let result = try Self.configureSession(
             session: session, photoOutput: photoOutput,
@@ -236,6 +241,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             manualFocusPreviewStream.deactivate()
         }
         observeRuntimeEvents(for: result.device)
+        canResumeSessionConfiguration = true
         shouldRunSession = true
         startSessionIfNeeded()
         return result
@@ -489,6 +495,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     func stop() {
         sessionQueue.async { [self, session, photoOutput, manualFocusPreviewStream] in
             shouldRunSession = false
+            canResumeSessionConfiguration = false
             cancelPendingZoomConfiguration()
             manualFocusPreviewStream.deactivate()
             discardPreparedVideoRecordingGraphLocked(
@@ -497,6 +504,40 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             )
             photoOutput.setPreparedPhotoSettingsArray([], completionHandler: nil)
             if session.isRunning { session.stopRunning() }
+        }
+    }
+
+    /// Stop the sensor while browsing without dismantling a reusable graph.
+    func pause() {
+        sessionQueue.async { [self] in
+            shouldRunSession = false
+            cancelPendingZoomConfiguration()
+            if session.isRunning { session.stopRunning() }
+        }
+    }
+
+    func resumeIfConfigured(_ configuration: SessionConfigurationResult) async -> Bool {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [self] in
+                guard isSceneActive, canResumeSessionConfiguration,
+                      activeVideoRecordingGraph == nil,
+                      Self.canReuseCurrentGraph(
+                        session: session, photoOutput: photoOutput,
+                        manualFocusPreviewOutput: manualFocusPreviewStream.videoOutput,
+                        plan: configuration.capturePlan, resolvedOutput: configuration.resolvedOutput,
+                        shouldConfigureLivePhotoAudioInput: configuration.livePhotoAudioInputConfigured
+                            || preparedVideoRecordingGraph?.audioInputAddedByRecording != nil,
+                        auxiliaryPreviewPolicy: configuration.auxiliaryPreviewPolicy
+                      ) else {
+                    continuation.resume(returning: false)
+                    return
+                }
+                // In PRO Video the shared preview connection belongs to the
+                // retained graph. Reactivating it would reset rotation/mirroring.
+                shouldRunSession = true
+                startSessionIfNeeded()
+                continuation.resume(returning: session.isRunning || session.isInterrupted)
+            }
         }
     }
 
