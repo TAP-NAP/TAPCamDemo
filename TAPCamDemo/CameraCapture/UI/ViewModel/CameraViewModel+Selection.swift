@@ -25,7 +25,7 @@ extension CameraViewModel {
         transitionDuration: TimeInterval,
         beforeImmediateZoom: (@MainActor @Sendable () async throws -> Void)? = nil
     ) async {
-        guard !photographerModeState.isTransitioning, !isConfiguringSession,
+        guard !isPausedForAnalysis, !photographerModeState.isTransitioning, !isConfiguringSession,
               !isVideoRecording, !isPreparingVideoMode else {
             return
         }
@@ -48,7 +48,7 @@ extension CameraViewModel {
     }
 
     func switchCameraPosition() async {
-        guard !isSessionControllerSuspectedWedged,
+        guard !isPausedForAnalysis, !isSessionControllerSuspectedWedged,
               !photographerModeState.isTransitioning,
               !isConfiguringSession else {
             return

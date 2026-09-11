@@ -943,20 +943,24 @@ struct CameraView: View {
               viewModel.videoPreparationState == .idle || viewModel.videoPreparationState == .needsPreparation else {
             return
         }
-        let generation = viewModel.configurationGeneration
         lifecycleCoordinator.prepareCaptureMode(
             to: .video,
-            prepareVideoMode: { await viewModel.prepareVideoModeIfNeeded() },
-            restorePhotoMode: {},
-            completion: { ready in
-                guard generation == viewModel.configurationGeneration,
-                      scenePhase == .active, !viewModel.isPausedForAnalysis else { return }
-                if !ready {
-                    selectedMode = .photo
-                    showViewfinderHint("Video mode unavailable")
-                }
-            }
+            prepareVideoMode: prepareVideoModeForCurrentSelection,
+            restorePhotoMode: {}
         )
+    }
+
+    private func prepareVideoModeForCurrentSelection() async -> Bool {
+        let generation = viewModel.configurationGeneration
+        let ready = await viewModel.prepareVideoModeIfNeeded()
+        guard !Task.isCancelled, generation == viewModel.configurationGeneration,
+              scenePhase == .active, !viewModel.isPausedForAnalysis,
+              selectedMode == .video else { return false }
+        if !ready {
+            selectedMode = .photo
+            showViewfinderHint("Video mode unavailable")
+        }
+        return ready
     }
 
     private func selectCaptureMode(_ mode: CameraCaptureModeOption) {
@@ -968,22 +972,13 @@ struct CameraView: View {
               !viewModel.isPreparingVideoMode else {
             return
         }
-        let generation = viewModel.configurationGeneration
+        let transitionToken = UUID()
         guard lifecycleCoordinator.prepareCaptureMode(
             to: mode,
-            prepareVideoMode: { await viewModel.prepareVideoModeIfNeeded() },
+            prepareVideoMode: prepareVideoModeForCurrentSelection,
             restorePhotoMode: { await viewModel.teardownPreparedVideoModeIfNeeded() },
-            completion: { didPrepare in
-                guard generation == viewModel.configurationGeneration,
-                      scenePhase == .active,
-                      !viewModel.isPausedForAnalysis else { return }
-                if !didPrepare {
-                    selectedMode = .photo
-                    showViewfinderHint("Video mode unavailable")
-                }
-            },
             settled: {
-                guard cameraPathTransitionPresentation == .switchingCaptureMode else { return }
+                guard cameraPathTransitionToken == transitionToken else { return }
                 if scenePhase == .active && !viewModel.isPausedForAnalysis {
                     completeCameraPathRuntimeTransition()
                 } else {
@@ -991,7 +986,7 @@ struct CameraView: View {
                 }
             }
         ) != nil else { return }
-        beginCameraPathTransition(.switchingCaptureMode)
+        beginCameraPathTransition(.switchingCaptureMode, token: transitionToken)
         selectedMode = mode
     }
 
@@ -1029,16 +1024,19 @@ struct CameraView: View {
 
         let shouldEnable = !viewModel.isPhotographerModeActive
         resetModeSpecificControlsForCameraPathChange()
-        beginCameraPathTransition(shouldEnable
+        let transitionToken = beginCameraPathTransition(shouldEnable
             ? .activatingProMode
             : .deactivatingProMode)
         pendingPhotographerModePreference = shouldEnable
 
         Task { @MainActor in
+            defer { completeCameraPathRuntimeTransition(token: transitionToken) }
             if selectedMode == .video {
                 await viewModel.teardownPreparedVideoModeIfNeeded()
             }
+            guard cameraPathTransitionToken == transitionToken else { return }
             await viewModel.setPhotographerModeEnabled(shouldEnable)
+            guard cameraPathTransitionToken == transitionToken else { return }
 
             let didReachRequestedStableMode: Bool
             if shouldEnable {
@@ -1050,20 +1048,12 @@ struct CameraView: View {
                 if case .failed(_, let reason) = viewModel.photographerModeState {
                     showViewfinderHint(reason.message)
                 }
-                completeCameraPathRuntimeTransition()
                 return
             }
 
             if selectedMode == .video {
-                let didPrepareVideo = await viewModel.prepareVideoModeIfNeeded()
-                guard didPrepareVideo else {
-                    selectedMode = .photo
-                    showViewfinderHint("Video mode unavailable")
-                    completeCameraPathRuntimeTransition()
-                    return
-                }
+                guard await prepareVideoModeForCurrentSelection() else { return }
             }
-            completeCameraPathRuntimeTransition()
 
             if shouldEnable {
                 alignVisibleAdjustmentControlsIfNeeded()
@@ -1213,11 +1203,7 @@ struct CameraView: View {
         Task { @MainActor in
             await viewModel.configureCurrentSelection()
             if selectedMode == .video {
-                let didPrepareVideo = await viewModel.prepareVideoModeIfNeeded()
-                if !didPrepareVideo {
-                    selectedMode = .photo
-                    showViewfinderHint("Video mode unavailable")
-                }
+                _ = await prepareVideoModeForCurrentSelection()
             }
         }
     }
@@ -1901,17 +1887,13 @@ struct CameraView: View {
             guard viewModel.configurationGeneration == expectedGeneration else { return }
             if scenePhase == .active, !viewModel.isPausedForAnalysis {
                 if selectedMode == .video, viewModel.activeSessionConfiguration != nil {
-                    let didPrepare = await viewModel.prepareVideoModeIfNeeded()
+                    _ = await prepareVideoModeForCurrentSelection()
                     guard viewModel.configurationGeneration == expectedGeneration else { return }
                     guard scenePhase == .active, !viewModel.isPausedForAnalysis else {
                         if cameraPathTransitionToken == transitionToken {
                             cancelCameraPathTransitionPresentation()
                         }
                         return
-                    }
-                    if !didPrepare {
-                        selectedMode = .photo
-                        showViewfinderHint("Video mode unavailable")
                     }
                 }
                 if cameraPathTransitionToken == transitionToken {
@@ -2035,26 +2017,24 @@ struct CameraView: View {
         let involvesPhotographerMode = isPhotographerModePreferredForRearCamera
         resetModeSpecificControlsForCameraPathChange()
 
-        beginCameraPathTransition(isSwitchingFromRear
+        let transitionToken = beginCameraPathTransition(isSwitchingFromRear
             ? .switchingToFrontCamera
             : (involvesPhotographerMode ? .restoringProMode : .switchingToRearCamera))
 
         Task { @MainActor in
+            defer { completeCameraPathRuntimeTransition(token: transitionToken) }
             if selectedMode == .video {
                 await viewModel.teardownPreparedVideoModeIfNeeded()
             }
+            guard cameraPathTransitionToken == transitionToken else { return }
             await viewModel.switchCameraPosition()
+            guard cameraPathTransitionToken == transitionToken else { return }
             if viewModel.isPhotographerModeActive {
                 alignVisibleAdjustmentControlsIfNeeded()
             }
             if selectedMode == .video {
-                let didPrepareVideo = await viewModel.prepareVideoModeIfNeeded()
-                if !didPrepareVideo {
-                    selectedMode = .photo
-                    showViewfinderHint("Video mode unavailable")
-                }
+                _ = await prepareVideoModeForCurrentSelection()
             }
-            completeCameraPathRuntimeTransition()
         }
     }
 
@@ -2063,10 +2043,10 @@ struct CameraView: View {
             return
         }
         resetModeSpecificControlsForCameraPathChange()
-        beginCameraPathTransition(.presented(message: "Restoring standard camera…"))
+        let transitionToken = beginCameraPathTransition(.presented(message: "Restoring standard camera…"))
         Task { @MainActor in
             await viewModel.configureCurrentSelection()
-            completeCameraPathRuntimeTransition()
+            completeCameraPathRuntimeTransition(token: transitionToken)
         }
     }
 
@@ -2085,10 +2065,11 @@ struct CameraView: View {
         exposureReadbackTask?.cancel()
     }
 
+    @discardableResult
     private func beginCameraPathTransition(
         _ presentation: CameraViewfinderTransitionPresentation,
         token: UUID = UUID()
-    ) {
+    ) -> UUID {
         cameraPathPreviewWatchdogTask?.cancel()
         cameraPathPreviewWatchdogTask = nil
         pendingPhotographerModePreference = nil
@@ -2096,10 +2077,13 @@ struct CameraView: View {
         cameraPathTransitionToken = token
         cameraPathTransitionRuntimeCompleted = false
         cameraPathTransitionPresentation = presentation
+        return token
     }
 
-    private func completeCameraPathRuntimeTransition() {
-        guard cameraPathTransitionPresentation.isPresented else {
+    private func completeCameraPathRuntimeTransition(token: UUID? = nil) {
+        if let token, cameraPathTransitionToken != token { return }
+        guard cameraPathTransitionPresentation.isPresented,
+              !viewModel.isPausedForAnalysis else {
             return
         }
         let needsPostRuntimePreviewConfirmation = !cameraPathTransitionRuntimeCompleted
@@ -2159,6 +2143,7 @@ struct CameraView: View {
 
     private func releaseCameraPathTransitionIfPreviewResumed() {
         guard scenePhase == .active,
+              !viewModel.isPausedForAnalysis,
               cameraPathTransitionToken != nil,
               cameraPathTransitionRuntimeCompleted,
               isPreviewLayerPreviewing,

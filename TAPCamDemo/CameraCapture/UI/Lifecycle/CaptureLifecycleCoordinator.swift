@@ -39,7 +39,7 @@ final class CaptureLifecycleCoordinator: ObservableObject {
         to mode: CameraCaptureModeOption,
         prepareVideoMode: @escaping @MainActor () async -> Bool,
         restorePhotoMode: @escaping @MainActor () async -> Void,
-        completion: @escaping @MainActor (Bool) -> Void,
+        completion: @escaping @MainActor (Bool) -> Void = { _ in },
         settled: @escaping @MainActor () -> Void = {}
     ) -> Task<Void, Never>? {
         guard !isChangingCaptureMode else { return nil }

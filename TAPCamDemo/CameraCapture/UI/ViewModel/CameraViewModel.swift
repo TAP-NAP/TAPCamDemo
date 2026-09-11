@@ -550,11 +550,15 @@ final class CameraViewModel: ObservableObject {
             isPausedForAnalysis = false
             await start()
         case .denied, .restricted:
+            isPausedForAnalysis = false
+            activeSessionConfiguration = nil
             statusMessage = CameraCaptureStatusPresentation.message(
                 for: TAPDepthCaptureError.cameraAccessDenied,
                 context: .configuration
             )
         @unknown default:
+            isPausedForAnalysis = false
+            activeSessionConfiguration = nil
             statusMessage = CameraCaptureStatusPresentation.message(
                 for: TAPDepthCaptureError.cameraAccessDenied,
                 context: .configuration
