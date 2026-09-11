@@ -84,7 +84,7 @@ struct CameraCaptureControlsView: View {
     let onAdjustShutterPosition: (Double) -> Void
     let onAdjustLensPosition: (Double) -> Void
     let onRestoreAutomaticMode: (CameraAdjustmentControl) -> Void
-    let onBeginAdjustment: (CameraAdjustmentControl) -> Void
+    let onBeginAdjustment: (CameraAdjustmentControl) async -> Double?
     let onEndAdjustment: (CameraAdjustmentControl) -> Void
 
     @State private var isShutterTouchActive = false

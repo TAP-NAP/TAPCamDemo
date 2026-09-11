@@ -725,22 +725,22 @@ struct TAPCameraCapturePresentationTests {
         controller.prepareForCameraInteraction()
         #expect(audioInputAllowanceAttempts == 0)
 
-        for style in [CameraAdjustmentHapticStyle.selection, .integerTick, .zeroTick] {
+        for style in [CameraAdjustmentHapticStyle.selection, .integerTick, .zeroTick, .autoDetent, .autoRelease, .limit] {
             allowsHapticsDuringAudioInput = false
             controller.adjustmentChanged(style: style)
             #expect(allowsHapticsDuringAudioInput)
         }
-        #expect(audioInputAllowanceAttempts == 3)
+        #expect(audioInputAllowanceAttempts == 6)
 
         allowsHapticsDuringAudioInput = false
         controller.shutterAccepted()
         #expect(allowsHapticsDuringAudioInput)
-        #expect(audioInputAllowanceAttempts == 4)
+        #expect(audioInputAllowanceAttempts == 7)
 
         allowsHapticsDuringAudioInput = false
         controller.prepareAdjustmentFeedback()
         #expect(allowsHapticsDuringAudioInput)
-        #expect(audioInputAllowanceAttempts == 5)
+        #expect(audioInputAllowanceAttempts == 8)
     }
 
     @Test @MainActor func cameraHapticsRetryAudioInputAllowanceAfterFailure() {

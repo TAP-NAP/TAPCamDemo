@@ -28,9 +28,6 @@ nonisolated enum CameraAdjustmentAutomationState: Equatable, Sendable {
         }
     }
 
-    var canRestoreAuto: Bool {
-        self == .manual
-    }
 }
 
 nonisolated struct CameraAdjustmentControlState: Equatable, Sendable {
@@ -383,7 +380,7 @@ struct CameraLowerToolbarView: View {
 
             parameterButton(
                 title: "Focus",
-                value: nil,
+                value: state.focus.lensPositionValue,
                 badge: state.focus.badge,
                 control: .focus,
                 isEnabled: state.focus.isAvailable,
@@ -442,7 +439,7 @@ struct CameraTickedAdjustmentStrip: View {
     let onAdjustShutterPosition: (Double) -> Void
     let onAdjustLensPosition: (Double) -> Void
     let onRestoreAutomaticMode: (CameraAdjustmentControl) -> Void
-    let onBeginAdjustment: (CameraAdjustmentControl) -> Void
+    let onBeginAdjustment: (CameraAdjustmentControl) async -> Double?
     let onEndAdjustment: (CameraAdjustmentControl) -> Void
 
     var body: some View {
@@ -482,7 +479,7 @@ struct CameraTickedAdjustmentStrip: View {
             }
         }()
         return CameraTickedSliderRow(
-            title: state.exposure.evTitle,
+            title: "EV",
             automationState: nil,
             value: state.exposure.evValue,
             valueBinding: Binding(
@@ -497,7 +494,7 @@ struct CameraTickedAdjustmentStrip: View {
             riskRanges: [],
             isEVIntegerHapticsEnabled: true,
             onRestoreAuto: {},
-            onEditingBegan: { onBeginAdjustment(.ev) },
+            onEditingBegan: { await onBeginAdjustment(.ev) },
             onEditingEnded: { onEndAdjustment(.ev) }
         )
     }
@@ -520,7 +517,12 @@ struct CameraTickedAdjustmentStrip: View {
             riskRanges: scale.positionRanges(for: state.exposure.isoRiskRanges),
             isEVIntegerHapticsEnabled: false,
             onRestoreAuto: { onRestoreAutomaticMode(.iso) },
-            onEditingBegan: { onBeginAdjustment(.iso) },
+            onEditingBegan: {
+                guard let iso = await onBeginAdjustment(.iso) else {
+                    return nil
+                }
+                return state.exposure.isoPosition(for: iso)
+            },
             onEditingEnded: { onEndAdjustment(.iso) }
         )
     }
@@ -528,7 +530,7 @@ struct CameraTickedAdjustmentStrip: View {
     private var shutterStrip: some View {
         let scale = state.exposure.shutterScale
         return CameraTickedSliderRow(
-            title: "S",
+            title: "Shutter",
             automationState: state.exposure.shutterAutomationState,
             value: state.exposure.shutterValue,
             valueBinding: Binding(
@@ -543,7 +545,12 @@ struct CameraTickedAdjustmentStrip: View {
             riskRanges: shutterRiskRangesForSlider,
             isEVIntegerHapticsEnabled: false,
             onRestoreAuto: { onRestoreAutomaticMode(.shutter) },
-            onEditingBegan: { onBeginAdjustment(.shutter) },
+            onEditingBegan: {
+                guard let duration = await onBeginAdjustment(.shutter) else {
+                    return nil
+                }
+                return state.exposure.shutterPosition(for: duration)
+            },
             onEditingEnded: { onEndAdjustment(.shutter) }
         )
     }
@@ -571,7 +578,7 @@ struct CameraTickedAdjustmentStrip: View {
             riskRanges: [],
             isEVIntegerHapticsEnabled: false,
             onRestoreAuto: { onRestoreAutomaticMode(.focus) },
-            onEditingBegan: { onBeginAdjustment(.focus) },
+            onEditingBegan: { await onBeginAdjustment(.focus) },
             onEditingEnded: { onEndAdjustment(.focus) }
         )
     }
@@ -611,7 +618,7 @@ struct CameraLowerToolbarPlaceholderView: View {
 
             CameraToolbarButtonContent(
                 title: "Focus",
-                value: nil,
+                value: "--",
                 badge: "A",
                 isActive: false,
                 isEnabled: false,

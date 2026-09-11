@@ -103,7 +103,7 @@ struct CameraBasicEVAdjustmentStrip: View {
             riskRanges: [],
             isEVIntegerHapticsEnabled: true,
             onRestoreAuto: {},
-            onEditingBegan: {},
+            onEditingBegan: { state.bias },
             onEditingEnded: {}
         )
         .accessibilityIdentifier("camera.basicEV.adjustmentStrip")

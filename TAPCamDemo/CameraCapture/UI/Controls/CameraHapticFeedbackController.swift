@@ -13,6 +13,9 @@ enum CameraAdjustmentHapticStyle: Equatable, Sendable {
     case selection
     case integerTick
     case zeroTick
+    case autoDetent
+    case autoRelease
+    case limit
 }
 
 final class CameraHapticFeedbackController: ObservableObject {
@@ -23,6 +26,8 @@ final class CameraHapticFeedbackController: ObservableObject {
     private let selectionGenerator = UISelectionFeedbackGenerator()
     private let integerImpactGenerator = UIImpactFeedbackGenerator(style: .medium)
     private let zeroImpactGenerator = UIImpactFeedbackGenerator(style: .heavy)
+    private let detentImpactGenerator = UIImpactFeedbackGenerator(style: .rigid)
+    private let releaseImpactGenerator = UIImpactFeedbackGenerator(style: .soft)
     private let areHapticsAllowedDuringAudioInput: () -> Bool
     private let enableHapticsDuringAudioInput: () throws -> Void
     private var didReportAudioInputAllowanceFailure = false
@@ -66,6 +71,8 @@ final class CameraHapticFeedbackController: ObservableObject {
         selectionGenerator.prepare()
         integerImpactGenerator.prepare()
         zeroImpactGenerator.prepare()
+        detentImpactGenerator.prepare()
+        releaseImpactGenerator.prepare()
     }
 
     func shutterAccepted() {
@@ -92,6 +99,15 @@ final class CameraHapticFeedbackController: ObservableObject {
         case .zeroTick:
             zeroImpactGenerator.impactOccurred(intensity: 1)
             zeroImpactGenerator.prepare()
+        case .autoDetent:
+            detentImpactGenerator.impactOccurred(intensity: 0.85)
+            detentImpactGenerator.prepare()
+        case .autoRelease:
+            releaseImpactGenerator.impactOccurred(intensity: 0.65)
+            releaseImpactGenerator.prepare()
+        case .limit:
+            detentImpactGenerator.impactOccurred(intensity: 0.4)
+            detentImpactGenerator.prepare()
         }
     }
 
