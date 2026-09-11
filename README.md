@@ -10,6 +10,9 @@ playback, depth maps, plane analysis and point-cloud views.
 
 ## Usage
 
+The `v1.0` tag marks the 1.0 development baseline. Start new work from it with
+`git switch -c my-change v1.0` after fetching tags.
+
 Open [TAPCamDemo.xcodeproj](TAPCamDemo.xcodeproj) in Xcode and select the
 `TAPCamDemo` scheme. The app targets iPhone on iOS 18.6 or later. For device
 capture and signing, configure your signing team and `APP_ATTEST_BACKEND_URL`

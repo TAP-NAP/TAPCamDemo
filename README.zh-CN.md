@@ -9,6 +9,9 @@ TAPCamDemo 是用于拍摄、签名和分享 TAP 照片、Live Photo 与视频�
 
 ## 使用
 
+`v1.0` 标签标记 1.0 开发基线。获取远端标签后，可用
+`git switch -c my-change v1.0` 从此基线创建开发分支。
+
 用 Xcode 打开 [TAPCamDemo.xcodeproj](TAPCamDemo.xcodeproj)，选择 `TAPCamDemo`
 scheme。应用面向运行 iOS 18.6 及以上版本的 iPhone。真机拍摄与签名需要在构建设置中
 配置签名团队和 `APP_ATTEST_BACKEND_URL`；服务器接口见
