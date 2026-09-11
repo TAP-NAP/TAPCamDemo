@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "" : {
+
+    },
     "%.3f seconds, %d RGB points" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -939,6 +942,9 @@
           }
         }
       }
+    },
+    "Depth unavailable · Last frame held" : {
+
     },
     "Depth unavailable; showing RAW" : {
       "extractionState" : "manual",
@@ -2416,6 +2422,16 @@
         }
       }
     },
+    "Playground" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "游乐场"
+          }
+        }
+      }
+    },
     "Please wait…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3667,6 +3683,9 @@
           }
         }
       }
+    },
+    "Take photo" : {
+
     },
     "TAP Library" : {
       "localizations" : {

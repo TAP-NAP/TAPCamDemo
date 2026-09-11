@@ -73,8 +73,10 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
             sessionController.capturePhoto(
                 settings: settings,
                 delegate: delegate,
+                expectedDeviceID: context.sessionConfiguration.device.uniqueID,
                 videoRotationAngle: videoRotationAngle,
-                isVideoMirrored: context.sessionConfiguration.device.position == .front
+                isVideoMirrored: context.sessionConfiguration.device.position == .front,
+                failureHandler: { delegate.failBeforeCapture($0) }
             )
         }
     }
@@ -228,6 +230,14 @@ nonisolated final class SingleCamPhotoCaptureDelegate: NSObject, AVCapturePhotoC
         self.livePhotoVideoCodec = livePhotoVideoCodec
         self.capturesLivePhotoAudio = capturesLivePhotoAudio
         super.init()
+    }
+
+    /// No AVFoundation request was submitted, so no delegate callback will
+    /// arrive to release the retained delegate and resume its continuation.
+    func failBeforeCapture(_ error: Error) {
+        guard !didComplete else { return }
+        didComplete = true
+        completion(.failure(error))
     }
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {

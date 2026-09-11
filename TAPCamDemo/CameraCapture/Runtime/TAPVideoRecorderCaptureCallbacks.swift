@@ -23,17 +23,23 @@ nonisolated final class TAPVideoGraphOutputRouter: NSObject,
     let callbackQueue: DispatchQueue
 
     private let videoOutput: AVCaptureVideoDataOutput
+    private let depthOutput: AVCaptureDepthDataOutput
     private weak var manualFocusPreviewStream: CameraManualFocusPreviewStream?
 
     /// Accessed only on `callbackQueue`.
     private var recorder: TAPVideoRecorder?
+    private var previewHandler: (@Sendable (CMSampleBuffer, AVDepthData) -> Void)?
 
     init(
         videoOutput: AVCaptureVideoDataOutput,
-        manualFocusPreviewStream: CameraManualFocusPreviewStream?
+        depthOutput: AVCaptureDepthDataOutput,
+        manualFocusPreviewStream: CameraManualFocusPreviewStream?,
+        previewHandler: (@Sendable (CMSampleBuffer, AVDepthData) -> Void)? = nil
     ) {
         self.videoOutput = videoOutput
+        self.depthOutput = depthOutput
         self.manualFocusPreviewStream = manualFocusPreviewStream
+        self.previewHandler = previewHandler
         callbackQueue = manualFocusPreviewStream?.sharedVideoCallbackQueue
             ?? DispatchQueue(
                 label: "tapcam.camera-capture.video-graph-router",
@@ -57,6 +63,14 @@ nonisolated final class TAPVideoGraphOutputRouter: NSObject,
         }
     }
 
+    /// The preview consumer must enqueue bounded work and return promptly;
+    /// this queue also owns AVFoundation's synchronized output callbacks.
+    func setPreviewHandler(_ handler: (@Sendable (CMSampleBuffer, AVDepthData) -> Void)?) {
+        callbackQueue.sync {
+            previewHandler = handler
+        }
+    }
+
     func dataOutputSynchronizer(
         _ synchronizer: AVCaptureDataOutputSynchronizer,
         didOutput synchronizedDataCollection: AVCaptureSynchronizedDataCollection
@@ -65,6 +79,12 @@ nonisolated final class TAPVideoGraphOutputRouter: NSObject,
             as? AVCaptureSynchronizedSampleBufferData,
            !videoData.sampleBufferWasDropped {
             manualFocusPreviewStream?.consumeSharedVideoSample(videoData.sampleBuffer)
+            if let previewHandler,
+               let depthData = synchronizedDataCollection.synchronizedData(for: depthOutput)
+                    as? AVCaptureSynchronizedDepthData,
+               !depthData.depthDataWasDropped {
+                previewHandler(videoData.sampleBuffer, depthData.depthData)
+            }
         }
         recorder?.handleSynchronizedDataCollection(
             synchronizer,
