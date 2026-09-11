@@ -18,8 +18,8 @@ commands in README.
 - Valid still photos and TAP Video without depth are retained, signed, and
   exported. Preserve artifact integrity checks; depth assessment is a consumer
   responsibility.
-- Use the interactive prototype for visible design changes and preserve agreed
-  states, interaction, and system-owned presentation boundaries.
+- Follow the UI requirements in ProductContract for visible design changes and
+  preserve agreed states, interaction, and system-owned presentation boundaries.
 - Startup and cold paths follow ProductContract §2.7. A warm run is not evidence
   for a cold path; scalable work requires explicit isolation and bounded updates.
 - Real-device acceptance uses the relevant capability procedure and records
