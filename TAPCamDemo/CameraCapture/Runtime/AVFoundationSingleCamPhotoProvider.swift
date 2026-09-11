@@ -130,7 +130,7 @@ nonisolated final class AVFoundationSingleCamPhotoProvider: SingleCamPhotoCaptur
     }
 }
 
-private struct SingleCamLivePhotoCapturePlan {
+nonisolated private struct SingleCamLivePhotoCapturePlan {
     let movieFileURL: URL
     let codec: AVVideoCodecType?
     let capturesAudio: Bool
