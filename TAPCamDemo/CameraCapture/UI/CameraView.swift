@@ -437,13 +437,6 @@ struct CameraView: View {
                 viewfinderChrome(topSafeAreaInset: proxy.safeAreaInsets.top)
 
                 cameraPreviewStage
-                    .overlay {
-                        CameraViewfinderTransitionOverlayView(
-                            presentation: effectiveCameraPathTransitionPresentation,
-                            recoveryActionTitle: cameraPathRecoveryActionTitle,
-                            onRecoveryAction: cameraPathRecoveryAction
-                        )
-                    }
                 Spacer(minLength: 8)
                 captureControls
             }
@@ -676,8 +669,6 @@ struct CameraView: View {
                 isLivePhotoEnabled: isLivePhotoEnabled,
                 proModeState: proModeChromeState,
                 basicEVState: basicEVControlState,
-                shouldShowBasicEV: !viewModel.isPhotographerModeActive
-                    && !isCameraPathTransitioning,
                 videoRecordingTimecode: viewModel.videoRecordingStartedAt.map {
                     CameraVideoRecordingTimecodeState(
                         startedAt: $0,
@@ -785,6 +776,8 @@ struct CameraView: View {
             previewController: previewController,
             state: previewStageState,
             highlightColor: viewfinderHighlightColor,
+            recoveryActionTitle: cameraPathRecoveryActionTitle,
+            onRecoveryAction: cameraPathRecoveryAction,
             onPreviewCropChange: viewModel.updatePreviewCropRect,
             onPreviewingChanged: previewLayerPreviewingDidChange,
             onSelectFocalLengthOption: selectFocalLengthDisplayOption,
@@ -821,6 +814,8 @@ struct CameraView: View {
             previewController: previewController,
             state: previewStageState,
             highlightColor: viewfinderHighlightColor,
+            recoveryActionTitle: cameraPathRecoveryActionTitle,
+            onRecoveryAction: cameraPathRecoveryAction,
             onPreviewCropChange: viewModel.updatePreviewCropRect,
             onPreviewingChanged: previewLayerPreviewingDidChange,
             onSelectFocalLengthOption: selectFocalLengthDisplayOption,
@@ -850,8 +845,7 @@ struct CameraView: View {
             focusLoupePulseID: previewFocusLoupePulseID,
             viewfinderEdgeToastMessage: viewfinderHint,
             contentRotation: chromeOrientation.angle,
-            isCameraPathTransitioning: isCameraPathTransitioning
-                || viewModel.photographerModeState.requiresStandardRecovery,
+            transitionPresentation: effectiveCameraPathTransitionPresentation,
             previewReadinessGeneration: previewReadinessGeneration
         )
     }

@@ -61,9 +61,12 @@ struct CameraViewfinderChromeState: Equatable {
     let isLivePhotoEnabled: Bool
     let proModeState: CameraProModeChromeState
     let basicEVState: CameraBasicEVControlState
-    let shouldShowBasicEV: Bool
     let videoRecordingTimecode: CameraVideoRecordingTimecodeState?
     let contentRotation: Angle
+
+    var shouldShowBasicEV: Bool {
+        !proModeState.isActive && !proModeState.isTransitioning
+    }
 
     init(
         flashMode: CameraFlashControlMode,
@@ -75,7 +78,6 @@ struct CameraViewfinderChromeState: Equatable {
             bias: 0,
             isStripVisible: false
         ),
-        shouldShowBasicEV: Bool = true,
         videoRecordingTimecode: CameraVideoRecordingTimecodeState? = nil,
         contentRotation: Angle
     ) {
@@ -85,7 +87,6 @@ struct CameraViewfinderChromeState: Equatable {
         self.isLivePhotoEnabled = isLivePhotoEnabled
         self.proModeState = proModeState
         self.basicEVState = basicEVState
-        self.shouldShowBasicEV = shouldShowBasicEV
         self.videoRecordingTimecode = videoRecordingTimecode
         self.contentRotation = contentRotation
     }

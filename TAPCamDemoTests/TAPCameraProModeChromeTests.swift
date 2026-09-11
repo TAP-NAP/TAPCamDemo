@@ -5,6 +5,7 @@
 
 import AVFoundation
 import Foundation
+import SwiftUI
 import Testing
 @testable import TAPCamDemo
 
@@ -44,6 +45,23 @@ struct TAPCameraProModeChromeTests {
         #expect(CameraProModeChromeState.active.isActive)
     }
 
+    @Test func photoVideoChromeChangeKeepsBasicEVVisibleWhileHidingLivePhoto() {
+        let photo = chromeState(proMode: .standard, isLivePhotoAvailable: true)
+        let video = chromeState(proMode: .standard, isLivePhotoAvailable: false)
+
+        #expect(photo.shouldShowBasicEV)
+        #expect(video.shouldShowBasicEV)
+        #expect(photo.isLivePhotoAvailable)
+        #expect(!video.isLivePhotoAvailable)
+    }
+
+    @Test func basicEVVisibilityFollowsOnlyProModePresentation() {
+        #expect(chromeState(proMode: .unavailable).shouldShowBasicEV)
+        #expect(chromeState(proMode: .standard).shouldShowBasicEV)
+        #expect(!chromeState(proMode: .transitioning).shouldShowBasicEV)
+        #expect(!chromeState(proMode: .active).shouldShowBasicEV)
+    }
+
     @Test func viewfinderTransitionPresentationKeepsRuntimeOwnershipOutsideTheOverlay() {
         #expect(!CameraViewfinderTransitionPresentation.hidden.isPresented)
         #expect(CameraViewfinderTransitionPresentation.hidden.message == nil)
@@ -66,4 +84,17 @@ struct TAPCameraProModeChromeTests {
         #expect(failure.message == "Camera unavailable")
     }
 
+    private func chromeState(
+        proMode: CameraProModeChromeState,
+        isLivePhotoAvailable: Bool = false
+    ) -> CameraViewfinderChromeState {
+        CameraViewfinderChromeState(
+            flashMode: .off,
+            isFlashAvailable: false,
+            isLivePhotoAvailable: isLivePhotoAvailable,
+            isLivePhotoEnabled: false,
+            proModeState: proMode,
+            contentRotation: .zero
+        )
+    }
 }

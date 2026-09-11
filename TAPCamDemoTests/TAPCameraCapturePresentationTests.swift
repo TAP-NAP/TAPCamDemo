@@ -1053,7 +1053,7 @@ struct TAPCameraCapturePresentationTests {
             focusLoupePulseID: nil,
             viewfinderEdgeToastMessage: nil,
             contentRotation: .zero,
-            isCameraPathTransitioning: false,
+            transitionPresentation: .hidden,
             previewReadinessGeneration: 0
         )
         let fieldNames = Mirror(reflecting: state).children.compactMap(\.label).joined(separator: " ")

@@ -27,7 +27,7 @@ struct CameraPreviewStageState {
     let focusLoupePulseID: UUID?
     let viewfinderEdgeToastMessage: String?
     let contentRotation: Angle
-    let isCameraPathTransitioning: Bool
+    let transitionPresentation: CameraViewfinderTransitionPresentation
     let previewReadinessGeneration: Int
 }
 
@@ -42,6 +42,8 @@ struct CameraPreviewStageView: View {
     let previewController: CameraPreviewController
     let state: CameraPreviewStageState
     let highlightColor: Color
+    let recoveryActionTitle: String?
+    let onRecoveryAction: (() -> Void)?
     let onPreviewCropChange: (CropRectNormalized) -> Void
     let onPreviewingChanged: (Bool, Int) -> Void
     let onSelectFocalLengthOption: (CameraFocalLengthDisplayOption) -> Void
@@ -75,7 +77,7 @@ struct CameraPreviewStageView: View {
             CameraPreviewView(
                 session: session,
                 controller: previewController,
-                isCameraPathTransitioning: state.isCameraPathTransitioning,
+                isCameraPathTransitioning: state.transitionPresentation.isPresented,
                 previewReadinessGeneration: state.previewReadinessGeneration,
                 onCropRectChanged: { rect in
                     onPreviewCropChange(CropRectNormalized(metadataRect: rect))
@@ -83,14 +85,9 @@ struct CameraPreviewStageView: View {
                 onPreviewingChanged: onPreviewingChanged
             )
             .frame(width: previewSize.width, height: previewSize.height)
-            .clipShape(RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous)
-                    .stroke(.white.opacity(0.12), lineWidth: 1)
-            }
+            .clipped()
             .overlay {
                 CameraGuideOverlayView(preference: state.guideOverlayPreference)
-                    .clipShape(RoundedRectangle(cornerRadius: previewCornerRadius, style: .continuous))
             }
             .overlay {
                 focusGestureLayer(previewSize: previewSize)
@@ -108,6 +105,14 @@ struct CameraPreviewStageView: View {
                 focusLoupe(previewSize: previewSize)
                     .padding(.trailing, 12)
                     .padding(.bottom, 12)
+            }
+            .overlay {
+                CameraViewfinderTransitionOverlayView(
+                    presentation: state.transitionPresentation,
+                    recoveryActionTitle: recoveryActionTitle,
+                    onRecoveryAction: onRecoveryAction
+                )
+                .clipped()
             }
             .overlay(alignment: .top) {
                 viewfinderEdgeToast
@@ -169,10 +174,6 @@ struct CameraPreviewStageView: View {
             hideFocusLoupe()
             hideManualFocusTapMarker()
         }
-    }
-
-    private var previewCornerRadius: CGFloat {
-        10
     }
 
     private func focusGestureLayer(previewSize: CGSize) -> some View {
@@ -592,14 +593,11 @@ struct CameraPreviewStageView: View {
     }
 
     private func previewSize(in containerSize: CGSize) -> CGSize {
-        let horizontalInset: CGFloat = 8
-        let availableWidth = max(0, containerSize.width - horizontalInset * 2)
-        let availableHeight = containerSize.height
         let nativeAspectRatio = CGFloat(max(0.01, state.nativePreviewAspectRatio))
-        let widthFromHeight = availableHeight * nativeAspectRatio
-        let previewWidth = min(availableWidth, widthFromHeight)
-        let previewHeight = previewWidth / nativeAspectRatio
-        return CGSize(width: previewWidth, height: previewHeight)
+        return CGSize(
+            width: containerSize.width,
+            height: min(containerSize.height, containerSize.width / nativeAspectRatio)
+        )
     }
 
     private var viewfinderControls: some View {
