@@ -71,7 +71,8 @@ struct TAPLocalizationTests {
             "Level tilted",
             "Dismiss focus magnifier",
             "TAP Library",
-            "Share",
+            "Share photo",
+            "Share video",
             "share.status.title",
             "share.status.verified",
             "share.status.preparing",
@@ -84,6 +85,8 @@ struct TAPLocalizationTests {
             "share.option.package.locked",
             "share.option.image.title",
             "share.option.image.subtitle",
+            "share.option.video.title",
+            "share.option.video.subtitle",
             "share.option.media.unverifiable",
             "share.badge.recommended",
             "share.progress.accessibilityValue",
@@ -91,8 +94,39 @@ struct TAPLocalizationTests {
             "share.error.message",
             "share.warning.localIntegrityFailed",
             "Delete",
-            "Coming soon",
+            "Delete photo",
+            "Delete video",
+            "2D analysis",
             "3D projection",
+            "Raw photo",
+            "Raw video",
+            "Available",
+            "Selected",
+            "Selected, Preparing",
+            "Selected, Ready",
+            "Registered depth unavailable",
+            "Unavailable",
+            "PHOTO",
+            "Photo mode",
+            "Video mode",
+            "Pro mode unavailable",
+            "Switching Pro mode",
+            "Turn off Pro mode",
+            "Turn on Pro mode",
+            "Off",
+            "On",
+            "Switching",
+            "App Attest Backend",
+            "App Attest Credential",
+            "Credential",
+            "Depth Warnings",
+            "Plane Strictness",
+            "Prepare Credential",
+            "Reset Local Credential",
+            "Speed",
+            "Balanced",
+            "Quality",
+            "%lld percent",
             "Near %@",
             "Valid depth",
             "Network Access",
@@ -124,10 +158,12 @@ struct TAPLocalizationTests {
         }
 
         for (key, rawEntry) in strings {
+            #expect(!key.isEmpty, "Empty UI text should use a verbatim initializer")
             let entry = try #require(
                 rawEntry as? [String: Any],
                 "Malformed catalog entry: \(key)"
             )
+            #expect(entry["extractionState"] as? String != "stale", "Review stale key usage: \(key)")
             let localizations = try #require(
                 entry["localizations"] as? [String: Any],
                 "Missing localizations: \(key)"

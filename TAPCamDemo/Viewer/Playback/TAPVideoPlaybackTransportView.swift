@@ -39,7 +39,7 @@ struct TAPVideoPlaybackTransportView: View {
         .padding(.horizontal, 16)
         .accessibilityElement(children: .contain)
         .disabled(model == nil)
-        .accessibilityValue(model == nil ? "Preparing video" : "")
+        .accessibilityValue(model == nil ? Text("Preparing video") : Text(verbatim: ""))
     }
 
     private func transportRow(showsTimeLabels: Bool) -> some View {

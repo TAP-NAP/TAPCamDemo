@@ -312,7 +312,7 @@ private struct PlaneRegionBadge: View {
     let highlightPalette: AnalysisHighlightPalette
 
     var body: some View {
-        Text("\(Int((region.confidence * 100).rounded()))%")
+        Text(region.confidence, format: .percent.precision(.fractionLength(0)))
             .font(.caption2.monospacedDigit().weight(.bold))
             .foregroundStyle(highlightPalette.badgeForeground)
             .padding(.horizontal, 7)

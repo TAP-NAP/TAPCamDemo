@@ -22,47 +22,8 @@
         }
       }
     },
-    "%@ %@" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ %2$@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ %2$@"
-          }
-        }
-      }
-    },
-    "%@ mode" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 模式"
-          }
-        }
-      }
-    },
-    "%@ mode coming soon" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 模式即将推出"
-          }
-        }
-      }
-    },
     "%lld percent" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -72,51 +33,8 @@
         }
       }
     },
-    "%lld sampled points" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 个采样点"
-          }
-        }
-      }
-    },
-    "%lld selected points" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 个已选点"
-          }
-        }
-      }
-    },
-    "%lld%%" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld%%"
-          }
-        }
-      }
-    },
-    "%lld%% valid depth coverage" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld%% 有效深度覆盖率"
-          }
-        }
-      }
-    },
     "2D analysis" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -149,7 +67,7 @@
       }
     },
     "3D projection" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -244,17 +162,6 @@
         }
       }
     },
-    "Always On" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "始终开启"
-          }
-        }
-      }
-    },
     "Aperture %@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -265,19 +172,8 @@
         }
       }
     },
-    "App Attest" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "App Attest"
-          }
-        }
-      }
-    },
     "App Attest Backend" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -288,7 +184,7 @@
       }
     },
     "App Attest Credential" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -361,19 +257,8 @@
         }
       }
     },
-    "Auto focus" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自动对焦"
-          }
-        }
-      }
-    },
     "Available" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -383,19 +268,8 @@
         }
       }
     },
-    "Back to TAP Library" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "返回 TAP 图库"
-          }
-        }
-      }
-    },
     "Balanced" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -473,28 +347,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "相机访问已被拒绝。你可以在“设置”中更改权限。"
-          }
-        }
-      }
-    },
-    "Camera Behavior" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "相机行为"
-          }
-        }
-      }
-    },
-    "Camera calibration missing." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "缺少相机标定数据。"
           }
         }
       }
@@ -619,17 +471,6 @@
         }
       }
     },
-    "Camera setup needs attention" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "相机设置需要处理"
-          }
-        }
-      }
-    },
     "Cancel" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -637,17 +478,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取消"
-          }
-        }
-      }
-    },
-    "Capture" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "拍摄"
           }
         }
       }
@@ -679,17 +509,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "拍摄评分"
-          }
-        }
-      }
-    },
-    "Capture uses location or microphone data only when system authorization and the app data-use switch are both enabled." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只有在系统已授权且 App 内的数据使用开关也已开启时，拍摄才会使用位置或麦克风数据。"
           }
         }
       }
@@ -727,28 +546,6 @@
         }
       }
     },
-    "Close the analyzer and return to the camera." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关闭分析器并返回相机。"
-          }
-        }
-      }
-    },
-    "Cloud Info" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "点云信息"
-          }
-        }
-      }
-    },
     "Cloud view projects valid depth pixels through camera intrinsics into a lightweight camera-coordinate point preview. It is a point cloud, not cloud storage, cloud compute, or a semantic word cloud." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -756,17 +553,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "点云视图使用相机内参，将有效深度像素投影为轻量的相机坐标系点预览。这里的点云并非云存储、云计算或语义词云。"
-          }
-        }
-      }
-    },
-    "Coming soon" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "即将推出"
           }
         }
       }
@@ -824,7 +610,7 @@
       }
     },
     "Credential" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -866,7 +652,7 @@
       }
     },
     "Delete photo" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -897,7 +683,7 @@
       }
     },
     "Delete video" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -914,17 +700,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已拒绝"
-          }
-        }
-      }
-    },
-    "Depth" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "深度"
           }
         }
       }
@@ -969,7 +744,7 @@
       }
     },
     "Depth Warnings" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -985,17 +760,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "目标位置"
-          }
-        }
-      }
-    },
-    "Detected plane %lld percent confidence" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "检测到的平面置信度为百分之 %lld"
           }
         }
       }
@@ -1017,39 +781,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "完成"
-          }
-        }
-      }
-    },
-    "Downloading photo" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在下载照片"
-          }
-        }
-      }
-    },
-    "Downloading video" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在下载视频"
-          }
-        }
-      }
-    },
-    "Enable required camera or photo library access in Settings, then return." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请在“设置”中允许所需的相机或照片图库访问权限，然后返回。"
           }
         }
       }
@@ -1096,17 +827,6 @@
         }
       }
     },
-    "Exposure compensation %@" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "曝光补偿 %@"
-          }
-        }
-      }
-    },
     "Far %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1114,28 +834,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "远处 %@"
-          }
-        }
-      }
-    },
-    "Feedback" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "反馈"
-          }
-        }
-      }
-    },
-    "File information" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文件信息"
           }
         }
       }
@@ -1190,17 +888,6 @@
         }
       }
     },
-    "Generating credential" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在生成凭据"
-          }
-        }
-      }
-    },
     "Get Permission" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1229,17 +916,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "网格"
-          }
-        }
-      }
-    },
-    "Grid Growth Animation" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "网格生长动画"
           }
         }
       }
@@ -1276,34 +952,12 @@
         }
       }
     },
-    "Help" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "帮助"
-          }
-        }
-      }
-    },
     "Highlight Color" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "高亮颜色"
-          }
-        }
-      }
-    },
-    "HTTP backend configured" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "HTTP 后端已配置"
           }
         }
       }
@@ -1379,28 +1033,6 @@
         }
       }
     },
-    "KeyID help. %@" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KeyID 帮助。%@"
-          }
-        }
-      }
-    },
-    "KeyID identifies the App Attest key that this app prepared on this device. The app uses that key to generate request assertions, and the backend uses the KeyID to find the registered credential for verification. Settings show only a redacted KeyID summary." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "KeyID 用于标识此 App 在本设备上准备的 App Attest 密钥。App 使用该密钥生成请求断言，后端使用 KeyID 查找已注册的凭据进行验证。“设置”中只会显示经过隐藏处理的 KeyID 摘要。"
-          }
-        }
-      }
-    },
     "Language" : {
       "localizations" : {
         "zh-Hans" : {
@@ -1417,17 +1049,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "退出专业模式。"
-          }
-        }
-      }
-    },
-    "Legend" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "图例"
           }
         }
       }
@@ -1461,17 +1082,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "水平未对齐"
-          }
-        }
-      }
-    },
-    "Library" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "图库"
           }
         }
       }
@@ -1768,17 +1378,6 @@
         }
       }
     },
-    "Location" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "位置"
-          }
-        }
-      }
-    },
     "Location Access" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1821,28 +1420,6 @@
         }
       }
     },
-    "Manual focus" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "手动对焦"
-          }
-        }
-      }
-    },
-    "Mask" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "遮罩"
-          }
-        }
-      }
-    },
     "Mask view highlights the pixels that contain finite positive depth samples. Green areas can contribute to statistics, plane fitting, and point projection; transparent areas are ignored." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1850,17 +1427,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "遮罩视图会高亮包含有限正深度样本的像素。绿色区域可参与统计、平面拟合和点投影，透明区域则会被忽略。"
-          }
-        }
-      }
-    },
-    "Measurements" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "测量"
           }
         }
       }
@@ -2001,28 +1567,6 @@
         }
       }
     },
-    "No stable plane region found from this point." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未能从此点找到稳定的平面区域。"
-          }
-        }
-      }
-    },
-    "Not prepared" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未准备"
-          }
-        }
-      }
-    },
     "Not Ready" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2046,7 +1590,7 @@
       }
     },
     "Off" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2067,7 +1611,7 @@
       }
     },
     "On" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2212,17 +1756,6 @@
         }
       }
     },
-    "Overlay" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "叠加层"
-          }
-        }
-      }
-    },
     "Pause video" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2233,35 +1766,13 @@
         }
       }
     },
-    "Permissions" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "权限"
-          }
-        }
-      }
-    },
     "PHOTO" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "照片"
-          }
-        }
-      }
-    },
-    "Photo carousel" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片轮播"
           }
         }
       }
@@ -2298,34 +1809,12 @@
       }
     },
     "Photo mode" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "照片模式"
-          }
-        }
-      }
-    },
-    "Photo Quality" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "照片质量"
-          }
-        }
-      }
-    },
-    "Photographer Mode requires a rear LiDAR camera. Unsupported devices fall back to Standard mode at runtime." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "专业模式需要后置 LiDAR 相机。不支持的设备会在运行时回退到标准模式。"
           }
         }
       }
@@ -2352,17 +1841,6 @@
         }
       }
     },
-    "Plane Filter" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "平面筛选"
-          }
-        }
-      }
-    },
     "Plane seed point" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2374,23 +1852,12 @@
       }
     },
     "Plane Strictness" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "平面严格度"
-          }
-        }
-      }
-    },
-    "Planes" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "平面"
           }
         }
       }
@@ -2460,7 +1927,7 @@
       }
     },
     "Prepare Credential" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2492,17 +1959,6 @@
         }
       }
     },
-    "Preparing 2D playback" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在准备 2D 播放"
-          }
-        }
-      }
-    },
     "Preparing 3D" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2510,28 +1966,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在准备 3D"
-          }
-        }
-      }
-    },
-    "Preparing App Attest credential" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在准备 App Attest 凭据"
-          }
-        }
-      }
-    },
-    "Preparing camera" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在准备相机"
           }
         }
       }
@@ -2579,17 +2013,6 @@
         }
       }
     },
-    "Preparing share" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在准备分享"
-          }
-        }
-      }
-    },
     "Preparing video" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2611,7 +2034,7 @@
       }
     },
     "Pro mode unavailable" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2622,7 +2045,7 @@
       }
     },
     "Quality" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2633,7 +2056,7 @@
       }
     },
     "Raw photo" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2644,7 +2067,7 @@
       }
     },
     "Raw video" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2698,7 +2121,7 @@
       }
     },
     "Registered depth unavailable" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -2783,34 +2206,12 @@
       }
     },
     "Reset Local Credential" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "重置本地凭据"
-          }
-        }
-      }
-    },
-    "Reset local credential." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已重置本地凭据。"
-          }
-        }
-      }
-    },
-    "Resets and prepares the App Attest credential." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重置并准备 App Attest 凭据。"
           }
         }
       }
@@ -2894,17 +2295,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重试网络访问"
-          }
-        }
-      }
-    },
-    "Return to camera" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "返回相机"
           }
         }
       }
@@ -2997,7 +2387,7 @@
       }
     },
     "Selected" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3045,7 +2435,7 @@
       }
     },
     "Selected, Preparing" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3056,7 +2446,7 @@
       }
     },
     "Selected, Ready" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3096,19 +2486,8 @@
         }
       }
     },
-    "Share" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "分享"
-          }
-        }
-      }
-    },
     "Share photo" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3119,7 +2498,7 @@
       }
     },
     "Share video" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3293,7 +2672,7 @@
         },
         "zh-Hans" : {
           "stringUnit" : {
-            "state" : "needs_review",
+            "state" : "translated",
             "value" : "可能损失元数据"
           }
         }
@@ -3507,17 +2886,6 @@
         }
       }
     },
-    "Shutter Haptics" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "快门触感"
-          }
-        }
-      }
-    },
     "Shutter Sound" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3572,7 +2940,7 @@
       }
     },
     "Speed" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3593,17 +2961,6 @@
         }
       }
     },
-    "Status" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "状态"
-          }
-        }
-      }
-    },
     "Switch front and back camera" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3615,7 +2972,7 @@
       }
     },
     "Switching" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3626,7 +2983,7 @@
       }
     },
     "Switching Pro mode" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3674,17 +3031,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TAP 图库"
-          }
-        }
-      }
-    },
-    "TAPCam" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "TAPCam"
           }
         }
       }
@@ -3784,17 +3130,6 @@
         }
       }
     },
-    "This photo is still being processed in the TAPCam queue. Its credential will appear when processing finishes." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此照片仍在 TAPCam 队列中处理。处理完成后将显示其凭据。"
-          }
-        }
-      }
-    },
     "This RGB and depth pairing is outside the SingleCam photo-depth pipeline." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3838,7 +3173,7 @@
       }
     },
     "Turn off Pro mode" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3849,7 +3184,7 @@
       }
     },
     "Turn on Pro mode" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -3990,7 +3325,7 @@
       }
     },
     "Unavailable" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4028,28 +3363,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "使用 %@ 视野"
-          }
-        }
-      }
-    },
-    "Use Location Data" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用位置数据"
-          }
-        }
-      }
-    },
-    "Use Microphone Data" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用麦克风数据"
           }
         }
       }
@@ -4093,17 +3406,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用于保存和读取照片。"
-          }
-        }
-      }
-    },
-    "Valid credential" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有效凭据"
           }
         }
       }
@@ -4152,7 +3454,7 @@
       }
     },
     "Video mode" : {
-      "extractionState" : "stale",
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -4168,17 +3470,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "视频位置"
-          }
-        }
-      }
-    },
-    "Viewfinder" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "取景器"
           }
         }
       }
