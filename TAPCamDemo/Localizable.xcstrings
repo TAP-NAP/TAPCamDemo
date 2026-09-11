@@ -715,6 +715,16 @@
         }
       }
     },
+    "Depth unavailable · Last frame held" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "深度不可用 · 已保留上一帧"
+          }
+        }
+      }
+    },
     "Depth unavailable; showing RAW" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1883,6 +1893,16 @@
         }
       }
     },
+    "Playground" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "游乐场"
+          }
+        }
+      }
+    },
     "Please wait…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3021,6 +3041,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "跟随系统"
+          }
+        }
+      }
+    },
+    "Take photo" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍照"
           }
         }
       }

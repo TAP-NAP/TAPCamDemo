@@ -7,6 +7,7 @@
 
 @preconcurrency import AVFoundation
 import CoreGraphics
+import CoreMedia
 import Foundation
 import OSLog
 
@@ -545,38 +546,61 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         settings: AVCapturePhotoSettings,
         resolvedOutput: ResolvedCaptureOutputProfile,
         delegate: AVCapturePhotoCaptureDelegate,
+        expectedDeviceID: String,
         videoRotationAngle: CGFloat?,
         isVideoMirrored: Bool,
         onFailure: @escaping @Sendable (Error) -> Void
     ) {
         sessionQueue.async { [session, photoOutput] in
-            // A queued shutter request may outlive the configuration it used.
-            // Reject it before AVFoundation can raise an Objective-C exception.
-            let activeFormat = session.inputs.compactMap { ($0 as? AVCaptureDeviceInput)?.device }
-                .first { $0.hasMediaType(.video) }?.activeFormat
             do {
+                guard let device = session.inputs.compactMap({ $0 as? AVCaptureDeviceInput })
+                    .first(where: { $0.device.hasMediaType(.video) })?.device,
+                      device.uniqueID == expectedDeviceID else {
+                    throw TAPDepthCaptureError.cameraControlTargetDeviceChanged
+                }
+                if let connection = photoOutput.connection(with: .video) {
+                    if connection.isVideoMirroringSupported {
+                        connection.automaticallyAdjustsVideoMirroring = false
+                        connection.isVideoMirrored = isVideoMirrored
+                    }
+                    if let videoRotationAngle,
+                       connection.isVideoRotationAngleSupported(videoRotationAngle) {
+                        connection.videoRotationAngle = videoRotationAngle
+                    }
+                }
+                // Settings can outlive a graph reconfiguration. Validate the
+                // current output on this queue immediately before the Obj-C API,
+                // whose argument exceptions cannot be caught by Swift.
                 try resolvedOutput.validatePhotoOutputCapabilities(
-                    CapturePhotoOutputCapabilitySnapshot(photoOutput: photoOutput, activeFormat: activeFormat),
+                    CapturePhotoOutputCapabilitySnapshot(photoOutput: photoOutput, activeFormat: device.activeFormat),
                     requireConfiguredState: true
                 )
+                try Self.validatePhotoCaptureDimensions(
+                    requested: CapturePhotoDimensions(settings.maxPhotoDimensions),
+                    supported: device.activeFormat.supportedMaxPhotoDimensions.map(CapturePhotoDimensions.init),
+                    outputMaximum: CapturePhotoDimensions(photoOutput.maxPhotoDimensions)
+                )
+                photoOutput.capturePhoto(with: settings, delegate: delegate)
             } catch {
                 onFailure(error)
-                return
             }
+        }
+    }
 
-            if let connection = photoOutput.connection(with: .video) {
-                if connection.isVideoMirroringSupported {
-                    connection.automaticallyAdjustsVideoMirroring = false
-                    connection.isVideoMirrored = isVideoMirrored
-                }
-
-                if let videoRotationAngle,
-                   connection.isVideoRotationAngleSupported(videoRotationAngle) {
-                    connection.videoRotationAngle = videoRotationAngle
-                }
-            }
-
-            photoOutput.capturePhoto(with: settings, delegate: delegate)
+    /// AVFoundation checks each dimension, not just total pixel count.
+    static func validatePhotoCaptureDimensions(
+        requested: CapturePhotoDimensions,
+        supported: [CapturePhotoDimensions],
+        outputMaximum: CapturePhotoDimensions
+    ) throws {
+        // Zero dimensions leave the request at AVFoundation's default.
+        guard requested.width != 0 || requested.height != 0 else { return }
+        guard requested.isValid, supported.contains(requested), outputMaximum.isValid,
+              requested.width <= outputMaximum.width,
+              requested.height <= outputMaximum.height else {
+            throw TAPDepthCaptureError.invalidCaptureOutputProfile(
+                "Requested photo dimensions \(requested.debugDescription) are not supported by the current photo output (maximum \(outputMaximum.debugDescription))."
+            )
         }
     }
 
@@ -586,6 +610,42 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         videoRotationAngle: CGFloat?,
         isVideoMirrored: Bool,
         depthFilteringEnabled: Bool = false
+    ) async throws {
+        try await prepareSynchronizedDepthGraph(
+            configuration: configuration,
+            recordsAudio: recordsAudio,
+            videoRotationAngle: videoRotationAngle,
+            isVideoMirrored: isVideoMirrored,
+            depthFilteringEnabled: depthFilteringEnabled
+        )
+    }
+
+    /// Streams synchronized RGB/depth frames without a recorder, writer or
+    /// audio output. RGB carries the requested connection transform; depth
+    /// stays in its unrotated, unmirrored native calibration coordinates.
+    func prepareGeekModePreview(
+        configuration: SessionConfigurationResult,
+        videoRotationAngle: CGFloat,
+        isVideoMirrored: Bool,
+        handler: @escaping @Sendable (CMSampleBuffer, AVDepthData) -> Void
+    ) async throws {
+        try await prepareSynchronizedDepthGraph(
+            configuration: configuration,
+            recordsAudio: false,
+            videoRotationAngle: videoRotationAngle,
+            isVideoMirrored: isVideoMirrored,
+            depthFilteringEnabled: false,
+            previewHandler: handler
+        )
+    }
+
+    private func prepareSynchronizedDepthGraph(
+        configuration: SessionConfigurationResult,
+        recordsAudio: Bool,
+        videoRotationAngle: CGFloat?,
+        isVideoMirrored: Bool,
+        depthFilteringEnabled: Bool,
+        previewHandler: (@Sendable (CMSampleBuffer, AVDepthData) -> Void)? = nil
     ) async throws {
         try await withCheckedThrowingContinuation { continuation in
             sessionQueue.async { [self, session] in
@@ -601,8 +661,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         recordsAudio: recordsAudio,
                         videoRotationAngle: videoRotationAngle,
                         isVideoMirrored: isVideoMirrored,
-                        depthFilteringEnabled: depthFilteringEnabled
+                        depthFilteringEnabled: depthFilteringEnabled,
+                        isGeekModePreview: previewHandler != nil
                        ) {
+                        preparedVideoRecordingGraph.outputRouter.setPreviewHandler(previewHandler)
                         continuation.resume()
                         return
                     }
@@ -638,11 +700,20 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             addedAudioInput: &addedAudioInput,
                             didApplyVideoDepthDataFormat: &didApplyVideoDepthDataFormat
                         )
+                        if previewHandler != nil {
+                            guard let connection = videoOutput.connection(with: .video),
+                                  connection.videoRotationAngle == videoRotationAngle,
+                                  connection.isVideoMirrored == isVideoMirrored else {
+                                throw TAPDepthCaptureError.incompatibleRGBDepthPairing
+                            }
+                        }
 
                         let outputRouter = TAPVideoGraphOutputRouter(
                             videoOutput: videoOutput,
+                            depthOutput: depthOutput,
                             manualFocusPreviewStream: usesSharedManualFocusVideoOutput
-                                ? manualFocusPreviewStream : nil
+                                ? manualFocusPreviewStream : nil,
+                            previewHandler: previewHandler
                         )
                         let dataOutputSynchronizer = AVCaptureDataOutputSynchronizer(
                             dataOutputs: [videoOutput, depthOutput]
@@ -659,8 +730,10 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                         }
                         session.commitConfiguration()
 
-                        let videoSettings = videoOutput.recommendedVideoSettingsForAssetWriter(writingTo: .mp4)
-                            ?? Self.fallbackVideoSettings(for: configuration.device)
+                        let videoSettings: [String: Any] = previewHandler == nil
+                            ? videoOutput.recommendedVideoSettingsForAssetWriter(writingTo: .mp4)
+                                ?? Self.fallbackVideoSettings(for: configuration.device)
+                            : [:]
                         preparedVideoRecordingGraph = PreparedVideoRecordingGraph(
                             outputs: addedOutputs,
                             videoOutput: videoOutput,
@@ -672,6 +745,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             videoRotationAngle: videoRotationAngle,
                             isVideoMirrored: isVideoMirrored,
                             depthFilteringEnabled: depthFilteringEnabled,
+                            isGeekModePreview: previewHandler != nil,
                             videoSettings: videoSettings,
                             previousActiveDepthDataFormat: previousActiveDepthDataFormat,
                             didApplyVideoDepthDataFormat: didApplyVideoDepthDataFormat,
@@ -679,6 +753,17 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                             outputRouter: outputRouter,
                             usesSharedManualFocusVideoOutput: usesSharedManualFocusVideoOutput
                         )
+                        if previewHandler != nil {
+                            do {
+                                try restoreGeekModePhotoDimensions(configuration)
+                            } catch {
+                                // The graph has already committed. Teardown
+                                // owns its own balanced configuration transaction.
+                                discardPreparedVideoRecordingGraphLocked(session: session, reason: "geek-photo-dimensions")
+                                continuation.resume(throwing: error)
+                                return
+                            }
+                        }
                         continuation.resume()
                     } catch {
                         Self.clearVideoRecordingOutputDelegates(addedOutputs)
@@ -702,6 +787,26 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
                 }
             }
         }
+    }
+
+    private func restoreGeekModePhotoDimensions(_ configuration: SessionConfigurationResult) throws {
+        guard let requested = configuration.resolvedOutput.maxPhotoDimensions else { return }
+        let supported = configuration.device.activeFormat.supportedMaxPhotoDimensions.map(CapturePhotoDimensions.init)
+        guard requested.isValid, supported.contains(requested) else {
+            throw TAPDepthCaptureError.invalidCaptureOutputProfile(
+                "The live depth preview format does not support photo dimensions \(requested.debugDescription)."
+            )
+        }
+        // Installing synchronized RGB/depth outputs can reset the photo output
+        // limit. Restore the agreed dimensions after that graph has committed.
+        if CapturePhotoDimensions(photoOutput.maxPhotoDimensions) != requested {
+            photoOutput.maxPhotoDimensions = requested.cmVideoDimensions
+        }
+        try Self.validatePhotoCaptureDimensions(
+            requested: requested,
+            supported: supported,
+            outputMaximum: CapturePhotoDimensions(photoOutput.maxPhotoDimensions)
+        )
     }
 
     func discardPreparedVideoRecording(reason: String) async {
@@ -780,7 +885,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
     func isVideoRecordingPrepared() async -> Bool {
         await withCheckedContinuation { continuation in
             sessionQueue.async { [self] in
-                continuation.resume(returning: preparedVideoRecordingGraph != nil
+                continuation.resume(returning: preparedVideoRecordingGraph?.isGeekModePreview == false
                     && shouldRunSession && isSceneActive && session.isRunning && !session.isInterrupted)
             }
         }
@@ -1581,6 +1686,7 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
             return
         }
         preparedVideoRecordingGraph = nil
+        graph.outputRouter.setPreviewHandler(nil)
         graph.outputRouter.deactivateRecorder()
         graph.dataOutputSynchronizer.setDelegate(nil, queue: nil)
         Self.clearVideoRecordingOutputDelegates(graph.outputs)
@@ -1992,6 +2098,7 @@ private nonisolated struct PreparedVideoRecordingGraph {
     let videoRotationAngle: CGFloat?
     let isVideoMirrored: Bool
     let depthFilteringEnabled: Bool
+    let isGeekModePreview: Bool
     let videoSettings: [String: Any]
     let previousActiveDepthDataFormat: AVCaptureDevice.Format?
     let didApplyVideoDepthDataFormat: Bool
@@ -2004,12 +2111,14 @@ private nonisolated struct PreparedVideoRecordingGraph {
         recordsAudio: Bool,
         videoRotationAngle: CGFloat?,
         isVideoMirrored: Bool,
-        depthFilteringEnabled: Bool
+        depthFilteringEnabled: Bool,
+        isGeekModePreview: Bool = false
     ) -> Bool {
         device.uniqueID == configuration.device.uniqueID
             && requestedRecordsAudio == recordsAudio
             && self.isVideoMirrored == isVideoMirrored
             && self.depthFilteringEnabled == depthFilteringEnabled
+            && self.isGeekModePreview == isGeekModePreview
             && Self.sameRotation(self.videoRotationAngle, videoRotationAngle)
     }
 

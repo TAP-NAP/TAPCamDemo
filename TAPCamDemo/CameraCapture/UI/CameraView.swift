@@ -55,6 +55,8 @@ struct CameraView: View {
     @State private var resourceInitializationDiagnosticTask: Task<Void, Never>?
     #endif
     @State private var isShowingSettings = false
+    @State private var isShowingGeekMode = false
+    @State private var isGeekModeEnabled = false
     @State private var selectedMode: CameraCaptureModeOption = .photo
     @State private var flashMode: CameraFlashControlMode
     @State private var isLivePhotoEnabled: Bool
@@ -178,7 +180,75 @@ struct CameraView: View {
     }
 
     var body: some View {
-        cameraReadinessObservers
+        Group {
+            if isShowingGeekMode {
+                geekModeRootView
+            } else {
+                cameraReadinessObservers
+            }
+        }
+        .sheet(isPresented: $isShowingSettings) {
+            DepthAnalyzerSettingsView(
+                appAttestController: appAttestController,
+                geekModeEnabled: $isGeekModeEnabled,
+                shutterSoundSuppressionSupported: viewModel.isShutterSoundSuppressionSupported
+            )
+        }
+        .onChange(of: isShowingSettings) { _, isPresented in
+            // Keep Settings mounted while editing; switch viewfinders after dismissal.
+            if !isPresented, isGeekModeEnabled { isShowingGeekMode = true }
+        }
+    }
+
+    private var geekModeRootView: some View {
+        NavigationStack {
+            GeekModeView(
+                capabilities: viewModel.capabilityMatrix,
+                appAttestController: appAttestController,
+                isShowingSettings: $isShowingSettings,
+                isShowingLibrary: libraryPresentedBinding,
+                recentLibraryPresentation: viewModel.recentLibraryPresentation,
+                isEnabled: isGeekModeEnabled,
+                beforeStart: {
+                    viewModel.stop()
+                    await viewModel.sessionController.waitUntilSessionQueueIsResponsive()
+                    viewModel.scheduleRecentTAPLibraryPreviewRefresh(afterNanoseconds: 0)
+                },
+                onExit: { isShowingGeekMode = false }
+            )
+                .navigationTitle("Playground")
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(isPresented: libraryPresentedBinding) {
+                    libraryDestination
+                }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            let returnsToCamera = lifecycleCoordinator.foregroundRouteRestorePolicy(
+                for: phase,
+                returnsToCameraOnForeground: CameraRoutePreferences.returnToCameraOnForeground()
+            )
+            Task {
+                await lifecycleCoordinator.scenePhaseDidChange(
+                    phase,
+                    shouldReturnToCameraOnForeground: returnsToCamera,
+                    routeStore: routeStore,
+                    refreshLibraryPreview: { viewModel.scheduleRecentTAPLibraryPreviewRefresh() },
+                    retryPendingCaptures: {
+                        await lifecycleCoordinator.retryPendingCaptures(
+                            viewModel: viewModel, appAttestController: appAttestController
+                        )
+                    }
+                )
+            }
+        }
+    }
+
+    private var libraryDestination: some View {
+        TAPLibraryView(
+            routeStore: routeStore,
+            libraryStore: libraryStore,
+            mediaFetcher: viewModel.libraryMediaFetcher
+        )
     }
 
     private var cameraRootView: some View {
@@ -188,23 +258,13 @@ struct CameraView: View {
                 .environment(\.locale, AppLanguage.english.locale)
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(isPresented: libraryPresentedBinding) {
-                    TAPLibraryView(
-                        routeStore: routeStore,
-                        libraryStore: libraryStore,
-                        mediaFetcher: viewModel.libraryMediaFetcher
-                    )
+                    libraryDestination
                 }
         }
         .disabled(initialReadinessState.blocksInteraction)
         .accessibilityHidden(initialReadinessState.blocksInteraction)
         .statusBarHidden(true)
         .environment(\.cameraHapticFeedbackController, hapticFeedbackController)
-        .sheet(isPresented: $isShowingSettings) {
-            DepthAnalyzerSettingsView(
-                appAttestController: appAttestController,
-                shutterSoundSuppressionSupported: viewModel.isShutterSoundSuppressionSupported
-            )
-        }
         .cameraScreenLifecycle(
             lifecycleCoordinator: lifecycleCoordinator,
             viewModel: viewModel,
@@ -1245,7 +1305,7 @@ struct CameraView: View {
     }
 
     private func applyPendingSettingsSessionReconfiguration() {
-        guard settingsSessionReconfigurationPolicy.settingsDidDismiss() else {
+        guard settingsSessionReconfigurationPolicy.settingsDidDismiss(), !isGeekModeEnabled else {
             return
         }
         reconfigureSessionForCapturePreferenceChange()
@@ -1253,7 +1313,9 @@ struct CameraView: View {
 
     private func reconfigureSessionForCapturePreferenceChange() {
         Task { @MainActor in
+            guard !isGeekModeEnabled, !isShowingGeekMode else { return }
             await viewModel.configureCurrentSelection()
+            guard !isGeekModeEnabled, !isShowingGeekMode else { return }
             if selectedMode == .video {
                 _ = await prepareVideoModeForCurrentSelection()
             }

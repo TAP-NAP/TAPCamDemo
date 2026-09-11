@@ -48,6 +48,7 @@ struct DepthAnalyzerSettingsView: View {
     @StateObject private var permissionRequester = DepthAnalyzerPermissionRequester()
     @State private var authorizationSnapshot: DepthAnalyzerAuthorizationSnapshot
     private let shutterSoundSuppressionSupported: Bool
+    @Binding private var isGeekModeEnabled: Bool
     @ObservedObject private var appAttestController: AppAttestRuntimeController
     @AppStorage(AppLanguage.storageKey)
     private var appLanguageRawValue = AppLanguage.defaultValue.rawValue
@@ -99,10 +100,12 @@ struct DepthAnalyzerSettingsView: View {
     init(
         snapshot: DepthAnalyzerAuthorizationSnapshot = .current(),
         appAttestController: AppAttestRuntimeController,
+        geekModeEnabled: Binding<Bool>,
         shutterSoundSuppressionSupported: Bool = true
     ) {
         _authorizationSnapshot = State(initialValue: snapshot)
         self.appAttestController = appAttestController
+        _isGeekModeEnabled = geekModeEnabled
         self.shutterSoundSuppressionSupported = shutterSoundSuppressionSupported
     }
 
@@ -286,6 +289,9 @@ struct DepthAnalyzerSettingsView: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 180)
             }
+
+            Toggle("Playground", isOn: $isGeekModeEnabled)
+                .accessibilityIdentifier("settings.geek-mode")
         }
     }
 

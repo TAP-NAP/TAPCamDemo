@@ -292,17 +292,47 @@ struct CameraCaptureControlsView: View {
     }
 
     private var recentPhotoButton: some View {
+        CameraLibraryButton(
+            recentThumbnail: recentThumbnail,
+            recentLibraryPresentation: recentLibraryPresentation,
+            isWriteInProgress: state.isLibraryWriteInProgress,
+            isEnabled: state.canOpenTAPLibrary,
+            thumbnailOpacity: state.recentThumbnailOpacity,
+            accessibilityLabel: state.tapLibraryAccessibilityLabel,
+            helpText: state.tapLibraryHelpText,
+            onOpen: onOpenTAPLibrary
+        )
+    }
+
+    private enum Metrics {
+        static let professionalToolbarSlotHeight: CGFloat = 38
+    }
+}
+
+/// Shared album affordance for the ordinary and point-cloud viewfinders.
+/// The caller owns navigation and supplies the canonical Library cover.
+struct CameraLibraryButton: View {
+    let recentThumbnail: UIImage?
+    let recentLibraryPresentation: RecentLibraryPresentation?
+    let isWriteInProgress: Bool
+    let isEnabled: Bool
+    let thumbnailOpacity: Double
+    let accessibilityLabel: String
+    let helpText: String
+    let onOpen: () -> Void
+
+    var body: some View {
         Button {
-            guard state.canOpenTAPLibrary else {
+            guard isEnabled else {
                 return
             }
-            onOpenTAPLibrary()
+            onOpen()
         } label: {
             ZStack {
                 recentPhotoThumbnail
-                    .opacity(state.recentThumbnailOpacity)
+                    .opacity(thumbnailOpacity)
 
-                if state.isLibraryWriteInProgress {
+                if isWriteInProgress {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(.black.opacity(0.36))
                         .frame(width: 58, height: 58)
@@ -321,10 +351,10 @@ struct CameraCaptureControlsView: View {
                 }
             }
         }
-        .disabled(!state.canOpenTAPLibrary)
-        .accessibilityLabel(state.tapLibraryAccessibilityLabel)
-        .help(state.tapLibraryHelpText)
-        .animation(.easeInOut(duration: 0.18), value: state.isLibraryWriteInProgress)
+        .disabled(!isEnabled)
+        .accessibilityLabel(accessibilityLabel)
+        .help(helpText)
+        .animation(.easeInOut(duration: 0.18), value: isWriteInProgress)
     }
 
     @ViewBuilder
@@ -354,7 +384,4 @@ struct CameraCaptureControlsView: View {
         }
     }
 
-    private enum Metrics {
-        static let professionalToolbarSlotHeight: CGFloat = 38
-    }
 }

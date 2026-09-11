@@ -323,6 +323,7 @@ struct TAPCaptureOutputProfileTests {
             settings: AVCapturePhotoSettings(),
             resolvedOutput: resolved,
             delegate: delegate,
+            expectedDeviceID: "unconfigured-camera",
             videoRotationAngle: nil,
             isVideoMirrored: false,
             onFailure: { error in
@@ -338,6 +339,52 @@ struct TAPCaptureOutputProfileTests {
         await controller.waitUntilSessionQueueIsResponsive()
         #expect(!controller.session.isRunning)
         #expect(controller.session.inputs.isEmpty)
+    }
+
+    @Test func captureDimensionsRejectOutputLimitResetByPreviewGraph() throws {
+        let requested = CapturePhotoDimensions(width: 4032, height: 3024)
+        let previewMaximum = CapturePhotoDimensions(width: 1920, height: 1440)
+        let supported = [previewMaximum, requested]
+
+        #expect(throws: TAPDepthCaptureError.self) {
+            try CaptureSessionController.validatePhotoCaptureDimensions(
+                requested: requested, supported: supported, outputMaximum: previewMaximum
+            )
+        }
+        // Reinstating the supported photo limit makes the same request valid.
+        try CaptureSessionController.validatePhotoCaptureDimensions(
+            requested: requested, supported: supported, outputMaximum: requested
+        )
+    }
+
+    @Test func captureDimensionsRequireBothAxesAndCurrentFormatSupport() throws {
+        let requested = CapturePhotoDimensions(width: 3000, height: 4000)
+        let widerMaximum = CapturePhotoDimensions(width: 5000, height: 3000)
+        #expect(throws: TAPDepthCaptureError.self) {
+            try CaptureSessionController.validatePhotoCaptureDimensions(
+                requested: requested, supported: [requested, widerMaximum], outputMaximum: widerMaximum
+            )
+        }
+        #expect(throws: TAPDepthCaptureError.self) {
+            try CaptureSessionController.validatePhotoCaptureDimensions(
+                requested: requested, supported: [widerMaximum], outputMaximum: requested
+            )
+        }
+        try CaptureSessionController.validatePhotoCaptureDimensions(
+            requested: requested, supported: [requested],
+            outputMaximum: CapturePhotoDimensions(width: 6000, height: 4500)
+        )
+    }
+
+    @Test func captureDimensionFailureCompletesPhotoDelegateOnce() {
+        var failureCount = 0
+        let delegate = SingleCamPhotoCaptureDelegate { result in
+            if case .failure = result { failureCount += 1 }
+        }
+        let error = TAPDepthCaptureError.invalidCaptureOutputProfile("Photo output dimensions changed")
+        delegate.failBeforeCapture(error)
+        delegate.failBeforeCapture(error)
+        #expect(failureCount == 1)
     }
 
     @Test func resolvedOutputValidatesPhotoOutputCapabilities() throws {
