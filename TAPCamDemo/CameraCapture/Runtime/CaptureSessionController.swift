@@ -729,6 +729,24 @@ nonisolated final class CaptureSessionController: @unchecked Sendable {
         }
     }
 
+    func isVideoRecordingPrepared(
+        configuration: SessionConfigurationResult,
+        recordsAudio: Bool,
+        videoRotationAngle: CGFloat?,
+        isVideoMirrored: Bool,
+        depthFilteringEnabled: Bool
+    ) async -> Bool {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async { [self] in
+                continuation.resume(returning: preparedVideoRecordingGraph?.matches(
+                    configuration: configuration, recordsAudio: recordsAudio,
+                    videoRotationAngle: videoRotationAngle, isVideoMirrored: isVideoMirrored,
+                    depthFilteringEnabled: depthFilteringEnabled
+                ) == true)
+            }
+        }
+    }
+
     func stopVideoRecording(
         reason: TAPVideoManifest.StopReason
     ) async throws -> TAPVideoRecordingArtifact {

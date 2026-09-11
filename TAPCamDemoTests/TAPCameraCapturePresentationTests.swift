@@ -106,6 +106,8 @@ struct TAPCameraCapturePresentationTests {
             #expect(viewModel.canCapture == (state != .preparing))
             #expect(!viewModel.canUseVideoShutter, "No active camera configuration means no video readiness")
             viewModel.configurationGeneration += 1
+            #expect(viewModel.videoPreparationState == state, "Operation identity alone does not destroy a retained graph")
+            viewModel.invalidateVideoPreparation()
             #expect(viewModel.videoPreparationState == .idle)
         }
         viewModel.isVideoRecording = true
@@ -158,7 +160,99 @@ struct TAPCameraCapturePresentationTests {
         #expect(await viewModel.prepareVideoMode {
             viewModel.configurationGeneration += 1
         } == false)
+        #expect(viewModel.videoPreparationState == .preparing, "A retired configuration cannot publish readiness")
+        viewModel.invalidateVideoPreparation()
         #expect(viewModel.videoPreparationState == .idle, "A retired configuration cannot publish readiness")
+    }
+
+    @Test(.timeLimit(.minutes(1))) @MainActor
+    func videoPreparationCoalescesMatchingRequestsAndRetiresStaleCompletion() async throws {
+        let viewModel = CameraViewModel(capabilityMatrix: CapabilityMatrix(rgbSources: [], depthCandidates: []),
+            libraryStore: LibraryMediaStore())
+        var preparedRequest: Int?
+        var operations: [Int] = []
+        var states: [CameraVideoPreparationState] = []
+        let subscription = viewModel.$videoPreparationState.sink { states.append($0) }
+        let (operationStarts, operationStarted) = AsyncStream<Int>.makeStream()
+        let (waiterEntries, waiterEntered) = AsyncStream<Void>.makeStream()
+        var operationIterator = operationStarts.makeAsyncIterator()
+        var waiterIterator = waiterEntries.makeAsyncIterator()
+        var operationContinuation: CheckedContinuation<Void, Never>?
+        defer {
+            subscription.cancel()
+            operationContinuation?.resume()
+            operationStarted.finish()
+            waiterEntered.finish()
+        }
+        let prepare: @MainActor (Int) async -> Bool = { request in
+            await viewModel.prepareVideoMode(isPrepared: { preparedRequest == request }) {
+                operations.append(request)
+                await withCheckedContinuation { continuation in
+                    operationContinuation = continuation
+                    operationStarted.yield(request)
+                }
+                preparedRequest = request
+            }
+        }
+        @MainActor func finishOperation() throws {
+            let continuation = try #require(operationContinuation)
+            operationContinuation = nil
+            continuation.resume()
+        }
+
+        let first = Task { @MainActor in await prepare(1) }
+        #expect(await operationIterator.next() == 1)
+        let duplicate = Task { @MainActor in
+            waiterEntered.yield(())
+            return await prepare(1)
+        }
+        #expect(await waiterIterator.next() != nil)
+        #expect(operations == [1])
+        try finishOperation()
+        #expect(await first.value)
+        #expect(await duplicate.value)
+        #expect(states == [.idle, .preparing, .ready])
+        #expect(await prepare(1))
+        #expect(operations == [1])
+        #expect(states == [.idle, .preparing, .ready], "Matching retained graphs never publish preparing again")
+
+        let changed = Task { @MainActor in await prepare(2) }
+        #expect(await operationIterator.next() == 2)
+        let nextChanged = Task { @MainActor in
+            waiterEntered.yield(())
+            return await prepare(3)
+        }
+        #expect(await waiterIterator.next() != nil)
+        #expect(operations == [1, 2], "A different request waits for the current graph operation")
+        try finishOperation()
+        #expect(await operationIterator.next() == 3)
+        #expect(operations == [1, 2, 3], "A waiter rechecks its own parameters after the previous operation")
+        try finishOperation()
+        #expect(await changed.value)
+        #expect(await nextChanged.value)
+        #expect(preparedRequest == 3)
+
+        let retired = Task { @MainActor in await prepare(4) }
+        #expect(await operationIterator.next() == 4)
+        viewModel.configurationGeneration += 1
+        viewModel.invalidateVideoPreparation()
+        #expect(viewModel.videoPreparationState == .idle)
+        let recovery = Task { @MainActor in
+            waiterEntered.yield(())
+            return await prepare(5)
+        }
+        #expect(await waiterIterator.next() != nil)
+        #expect(operations == [1, 2, 3, 4], "Invalidation still waits for physical work to drain")
+        let statesAfterInvalidation = states.count
+        try finishOperation()
+        #expect(await retired.value == false)
+        #expect(await operationIterator.next() == 5)
+        #expect(Array(states.dropFirst(statesAfterInvalidation)) == [.preparing], "Retired completion cannot publish ready")
+        try finishOperation()
+        #expect(await recovery.value)
+        #expect(preparedRequest == 5)
+        #expect(operations == [1, 2, 3, 4, 5])
+        #expect(viewModel.videoPreparationState == .ready)
     }
 
     @Test(.timeLimit(.minutes(1)), arguments: [false, true]) @MainActor

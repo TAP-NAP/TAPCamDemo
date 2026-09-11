@@ -172,6 +172,7 @@ extension CameraViewModel {
 
         cancelManualFocusRuntime()
         configurationGeneration += 1
+        invalidateVideoPreparation()
         let generation = configurationGeneration
         isDepthCaptureReady = false
         focalLengthOptions = capabilityMatrix.focalLengthOptions()

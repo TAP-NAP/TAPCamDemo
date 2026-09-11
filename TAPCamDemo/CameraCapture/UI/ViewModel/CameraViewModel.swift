@@ -69,9 +69,8 @@ final class CameraViewModel: ObservableObject {
     let videoPosterGenerator: any LibraryVideoPosterGenerating
     let pipeline: CapturePipeline
     var activeSessionConfiguration: SessionConfigurationResult?
-    var configurationGeneration = 0 {
-        didSet { videoPreparationState = .idle }
-    }
+    var configurationGeneration = 0
+    var videoPreparationTask: Task<Bool, Never>?
     var depthSelectionMode: DepthSelectionMode = .automatic
     var requestedGlobalAutoExposureBias = CameraEVPreferences.defaultGlobalBias
     var activeVideoRecordingCaptureID: String?
@@ -352,6 +351,7 @@ final class CameraViewModel: ObservableObject {
 
         cancelManualFocusRuntime()
         configurationGeneration += 1
+        invalidateVideoPreparation()
         cancelCameraPathConfigurationWatchdog()
         isConfiguringSession = false
         isDepthCaptureReady = false
@@ -370,6 +370,7 @@ final class CameraViewModel: ObservableObject {
         cancelCameraPathConfigurationWatchdog()
         cancelManualFocusRuntime()
         configurationGeneration += 1
+        invalidateVideoPreparation()
         isConfiguringSession = false
         isDepthCaptureReady = false
         activeSessionConfiguration = nil
@@ -460,6 +461,7 @@ final class CameraViewModel: ObservableObject {
         recentLibraryCoverTask = nil
         recentLibraryFetchGeneration &+= 1
         configurationGeneration += 1
+        invalidateVideoPreparation()
         isConfiguringSession = false
         reconcileInterruptedPhotographerModeTransition()
         isPausedForAnalysis = false
@@ -475,6 +477,7 @@ final class CameraViewModel: ObservableObject {
         recentLibraryCoverTask = nil
         recentLibraryFetchGeneration &+= 1
         configurationGeneration += 1
+        invalidateVideoPreparation()
         isConfiguringSession = false
         reconcileInterruptedPhotographerModeTransition()
         isPausedForAnalysis = true

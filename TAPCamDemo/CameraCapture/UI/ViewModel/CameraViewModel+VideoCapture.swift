@@ -62,10 +62,10 @@ extension CameraViewModel {
     }
 
     @discardableResult
-    func prepareVideoModeIfNeeded(depthFilteringEnabled: Bool? = nil) async -> Bool {
+    func prepareVideoModeIfNeeded() async -> Bool {
         guard !isPausedForAnalysis,
               !isVideoRecording,
-              !isPreparingVideoMode,
+              !isPreparingVideoMode || videoPreparationTask != nil,
               let activeSessionConfiguration else {
             return false
         }
@@ -84,44 +84,77 @@ extension CameraViewModel {
             device: activeSessionConfiguration.device
         )
         let isVideoMirrored = activeSessionConfiguration.device.position == .front
+        let depthFilteringEnabled = DepthAnalyzerPreferences.appleDepthFilteringEnabled()
 
-        let didPrepare = await prepareVideoMode {
+        return await prepareVideoMode(isPrepared: { [sessionController] in
+            await sessionController.isVideoRecordingPrepared(
+                configuration: activeSessionConfiguration,
+                recordsAudio: recordsAudio,
+                videoRotationAngle: videoRotationAngle,
+                isVideoMirrored: isVideoMirrored,
+                depthFilteringEnabled: depthFilteringEnabled
+            )
+        }) { [sessionController] in
             try await sessionController.prepareVideoRecording(
                 configuration: activeSessionConfiguration,
                 recordsAudio: recordsAudio,
                 videoRotationAngle: videoRotationAngle,
                 isVideoMirrored: isVideoMirrored,
-                depthFilteringEnabled: depthFilteringEnabled ?? DepthAnalyzerPreferences.appleDepthFilteringEnabled()
+                depthFilteringEnabled: depthFilteringEnabled
             )
         }
-        return didPrepare
     }
 
     /// The session operation, rather than animation time, owns readiness.
     @discardableResult
-    func prepareVideoMode(using operation: () async throws -> Void) async -> Bool {
+    func prepareVideoMode(
+        isPrepared: @escaping @MainActor () async -> Bool = { false },
+        using operation: @escaping @MainActor () async throws -> Void
+    ) async -> Bool {
         let generation = configurationGeneration
-        videoPreparationState = .preparing
-        statusMessage = "Preparing TAP video..."
-        do {
-            try await operation()
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
-                return false
-            }
-            statusMessage = "TAP video ready."
-            videoPreparationState = .ready
-            return true
-        } catch {
-            guard generation == configurationGeneration, !isPausedForAnalysis else {
-                return false
-            }
-            statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
-            #if DEBUG
-            TAPDiagnostics.cameraCapture.error("video mode warmup failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
-            #endif
-            videoPreparationState = .idle
-            return false
+        // AVFoundation work already on the session queue must drain. Every
+        // waiter then rechecks its own parameters against the retained graph.
+        while let task = videoPreparationTask {
+            _ = await task.value
         }
+        guard !Task.isCancelled, generation == configurationGeneration,
+              !isPausedForAnalysis else { return false }
+
+        let task = Task { @MainActor in
+            defer { videoPreparationTask = nil }
+            do {
+                let alreadyPrepared = await isPrepared()
+                guard !Task.isCancelled, generation == configurationGeneration,
+                      !isPausedForAnalysis else { return false }
+                if !alreadyPrepared {
+                    videoPreparationState = .preparing
+                    statusMessage = "Preparing TAP video..."
+                    try await operation()
+                }
+                guard !Task.isCancelled, generation == configurationGeneration,
+                      !isPausedForAnalysis else { return false }
+                statusMessage = "TAP video ready."
+                if videoPreparationState != .ready { videoPreparationState = .ready }
+                return true
+            } catch {
+                guard !Task.isCancelled, generation == configurationGeneration,
+                      !isPausedForAnalysis else { return false }
+                statusMessage = CameraCaptureStatusPresentation.message(for: error, context: .capture)
+                #if DEBUG
+                TAPDiagnostics.cameraCapture.error("video mode warmup failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
+                #endif
+                videoPreparationState = .idle
+                return false
+            }
+        }
+        videoPreparationTask = task
+        let ready = await task.value
+        return ready && !Task.isCancelled
+    }
+
+    func invalidateVideoPreparation() {
+        videoPreparationTask?.cancel()
+        videoPreparationState = .idle
     }
 
     func teardownPreparedVideoModeIfNeeded() async {
@@ -129,6 +162,8 @@ extension CameraViewModel {
             return
         }
         let generation = configurationGeneration
+        _ = await videoPreparationTask?.value
+        guard generation == configurationGeneration else { return }
         videoPreparationState = .preparing
         await sessionController.discardPreparedVideoRecording(reason: "mode-switch")
         guard generation == configurationGeneration else { return }
@@ -163,6 +198,7 @@ extension CameraViewModel {
     private func startVideoRecording(
         pendingCaptureWorkerClient: (any AppAttestClient)?
     ) async {
+        _ = await videoPreparationTask?.value
         guard !isPausedForAnalysis else {
             statusMessage = "Camera paused for analysis."
             return

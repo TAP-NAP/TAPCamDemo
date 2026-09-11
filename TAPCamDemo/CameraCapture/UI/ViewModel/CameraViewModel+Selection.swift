@@ -213,6 +213,7 @@ extension CameraViewModel {
 
         cancelManualFocusRuntime()
         configurationGeneration += 1
+        invalidateVideoPreparation()
         let generation = configurationGeneration
         photographerModeState = .activating
         isConfiguringSession = true
@@ -288,6 +289,7 @@ extension CameraViewModel {
         let previous = runtimeSelectionSnapshot()
         cancelManualFocusRuntime()
         configurationGeneration += 1
+        invalidateVideoPreparation()
         let generation = configurationGeneration
         photographerModeState = .deactivating
         isConfiguringSession = true
@@ -424,6 +426,7 @@ extension CameraViewModel {
         let isRecoveringUnconfiguredCamera = photographerModeState.requiresStandardRecovery
         cancelManualFocusRuntime()
         configurationGeneration += 1
+        invalidateVideoPreparation()
         let generation = configurationGeneration
         isConfiguringSession = true
         if isRecoveringUnconfiguredCamera {
