@@ -117,7 +117,7 @@ struct CameraViewfinderTransitionOverlayView: View {
             }
 
             if let message = presentation.message {
-                CameraViewfinderTransitionCopy.text(for: message)
+                Text(LocalizedStringKey(message))
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
@@ -127,7 +127,7 @@ struct CameraViewfinderTransitionOverlayView: View {
 
             if let recoveryActionTitle, let onRecoveryAction {
                 Button(action: onRecoveryAction) {
-                    CameraViewfinderTransitionCopy.text(for: recoveryActionTitle)
+                    Text(LocalizedStringKey(recoveryActionTitle))
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.white)
@@ -143,28 +143,6 @@ struct CameraViewfinderTransitionOverlayView: View {
     private var accessibilityLabel: Text {
         guard let message = presentation.message else {
             return Text(verbatim: "")
-        }
-        return CameraViewfinderTransitionCopy.text(for: message)
-    }
-}
-
-private enum CameraViewfinderTransitionCopy {
-    private static let localizedMessages: Set<String> = [
-        "Starting Pro mode…",
-        "Returning to standard mode…",
-        "Switching to front camera…",
-        "Switching to rear camera…",
-        "Restoring Pro mode…",
-        "Restoring standard camera…",
-        "Unable to restore the camera.",
-        "Camera service is not responding. Reopen TAP-NAP if it does not recover.",
-        "Retry"
-    ]
-
-    static func text(for message: String) -> Text {
-        guard localizedMessages.contains(message) else {
-            // Presentation cases may carry a future runtime value; keep it verbatim.
-            return Text(verbatim: message)
         }
         return Text(LocalizedStringKey(message))
     }

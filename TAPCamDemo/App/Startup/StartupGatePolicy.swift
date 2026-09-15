@@ -7,8 +7,7 @@ import Foundation
 
 /// Shared status for the visible first-install rows.
 ///
-/// Some rows are OS permissions, while the frozen Network row is a backend
-/// health check. Permission-specific routing uses
+/// Permission-specific routing uses
 /// `RequiredPermissionSnapshot` below so `.limited` and `.restricted` are not
 /// collapsed into this presentation model.
 nonisolated enum StartupGateRequirementStatus: Equatable, Sendable {
@@ -17,19 +16,9 @@ nonisolated enum StartupGateRequirementStatus: Equatable, Sendable {
     case granted
     case denied
     case restricted
-    case skipped
-}
-
-nonisolated enum StartupGateRequirementKind: CaseIterable, Equatable, Sendable {
-    case securityPreflight
-    case camera
-    case photoLibrary
-    case location
-    case microphone
 }
 
 nonisolated struct StartupGateStatusSnapshot: Equatable, Sendable {
-    let securityPreflight: StartupGateRequirementStatus
     let camera: StartupGateRequirementStatus
     let photoLibrary: StartupGateRequirementStatus
     let location: StartupGateRequirementStatus
@@ -42,19 +31,13 @@ nonisolated struct StartupGateStatusSnapshot: Equatable, Sendable {
     var hasBlockingStartupFailure: Bool {
         StartupGatePolicy.hasBlockingStartupFailure(self)
     }
-
-    var hasSecurityPreflightFailure: Bool {
-        securityPreflight == .denied
-    }
 }
 
 // MARK: - Canonical setup fact and current pre-release completion fact
 
 /// Credential evidence required by a canonical Setup receipt.
 ///
-/// A `/healthz` reachability result cannot construct credential evidence.
-/// The current Network flow records reachability; it does not produce the
-/// verified binding required for a canonical receipt.
+/// Permission setup does not produce a verified credential binding.
 nonisolated struct SetupCredentialBinding: Codable, Equatable, Sendable {
     let credentialName: String
     let keyIDFingerprint: String
@@ -67,8 +50,7 @@ nonisolated struct SetupCredentialBinding: Codable, Equatable, Sendable {
 
 /// A locally verified credential binding supplied by the App Attest storage
 /// boundary. Merely decoding the same strings from UserDefaults does not create
-/// one of these values. A reachability-only Network result cannot supply a
-/// verified binding or allow a canonical receipt to self-validate.
+/// one of these values or allow a canonical receipt to self-validate.
 nonisolated struct VerifiedStartupCredentialBinding: Equatable, Sendable {
     let value: SetupCredentialBinding
 }
@@ -93,8 +75,7 @@ nonisolated struct SetupReceipt: Codable, Equatable, Sendable {
     let completedAt: Date
 }
 
-/// Non-canonical completion record for the reachability-only setup flow.
-/// It does not claim that `/healthz` supplied a credential binding.
+/// Permission-setup completion, independent of credential registration.
 nonisolated struct SetupCompletionRecord: Codable, Equatable, Sendable {
     static let currentSchemaVersion = 1
 
@@ -208,9 +189,7 @@ struct StartupSetupFactStore {
         return .absent
     }
 
-    /// Records only the current pre-release completion fact. This method cannot
-    /// write `SetupReceipt` and therefore cannot turn `/healthz` into App Attest
-    /// credential evidence.
+    /// Records permission setup without certifying an App Attest credential.
     @discardableResult
     func recordCurrentCompletion(
         statusSnapshot: StartupGateStatusSnapshot,
@@ -262,14 +241,7 @@ struct StartupSetupFactStore {
     private static func optionalChoice(
         for status: StartupGateRequirementStatus
     ) -> OptionalSetupChoice {
-        switch status {
-        case .granted:
-            .granted
-        case .skipped:
-            .skipped
-        case .idle, .requesting, .denied, .restricted:
-            .unresolved
-        }
+        status == .granted ? .granted : .unresolved
     }
 }
 
@@ -327,27 +299,15 @@ nonisolated enum StartupFirstInstallContinueAction: Equatable, Sendable {
 }
 
 nonisolated enum StartupGatePolicy {
-    static let requiredRequirements: [StartupGateRequirementKind] = [
-        .securityPreflight,
-        .camera,
-        .photoLibrary
-    ]
-
-    static let optionalRequirements: [StartupGateRequirementKind] = [
-        .location,
-        .microphone
-    ]
-
     static func hasCompletedRequiredStartupChecks(
         _ snapshot: StartupGateStatusSnapshot
     ) -> Bool {
-        snapshot.securityPreflight == .granted
-            && snapshot.camera == .granted
+        snapshot.camera == .granted
             && snapshot.photoLibrary == .granted
     }
 
     static func hasBlockingStartupFailure(_ snapshot: StartupGateStatusSnapshot) -> Bool {
-        [snapshot.securityPreflight, snapshot.camera, snapshot.photoLibrary]
+        [snapshot.camera, snapshot.photoLibrary]
             .contains { $0 == .denied || $0 == .restricted }
     }
 

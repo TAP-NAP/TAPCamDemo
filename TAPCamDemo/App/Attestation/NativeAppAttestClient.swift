@@ -30,6 +30,19 @@ actor NativeAppAttestClient: AppAttestClient {
     func prepare(credentialName: String) async throws -> AppAttestCredential {
         let name = try normalizedName(credentialName)
         guard deviceService.isSupported else { throw AppAttestError.unsupportedDevice }
+        var healthRequest = URLRequest(
+            url: baseURL.appendingPathComponent("healthz"),
+            cachePolicy: .reloadIgnoringLocalAndRemoteCacheData,
+            timeoutInterval: 3
+        )
+        healthRequest.httpMethod = "GET"
+        let (_, healthResponse) = try await urlSession.data(for: healthRequest)
+        guard let healthResponse = healthResponse as? HTTPURLResponse else {
+            throw AppAttestError.invalidHTTPResponse
+        }
+        guard (200..<300).contains(healthResponse.statusCode) else {
+            throw AppAttestError.backendUnavailable("HTTP \(healthResponse.statusCode)")
+        }
         let challenge = try await requestChallenge(purpose: "attestation", name: name)
         let keyID = try await deviceService.generateKey()
         let attestation = try await deviceService.attestKey(

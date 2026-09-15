@@ -5,7 +5,9 @@
 
 import AVFoundation
 import Combine
+import CoreLocation
 import Foundation
+import Photos
 import SwiftUI
 import Testing
 import UIKit
@@ -1720,6 +1722,28 @@ struct TAPCameraCapturePresentationTests {
         #expect(CameraGuideOverlayPreference.restoredStyle(rawValue: "ruleOfThirds") == .ruleOfThirds)
         #expect(CameraGuideOverlayPreference.restoredStyle(rawValue: "off") == .ruleOfThirds)
         #expect(CameraGuideOverlayPreference.restoredStyle(rawValue: "unexpected") == .ruleOfThirds)
+    }
+
+    @Test func dataPermissionsOnlyOfferSettingsForDeniedAuthorization() {
+        let cases: [(AVAuthorizationStatus, PHAuthorizationStatus, CLAuthorizationStatus, AVAuthorizationStatus, Bool)] = [
+            (.authorized, .authorized, .authorizedAlways, .authorized, false),
+            (.authorized, .limited, .authorizedWhenInUse, .authorized, false),
+            (.denied, .authorized, .authorizedWhenInUse, .authorized, true),
+            (.authorized, .denied, .authorizedWhenInUse, .authorized, true),
+            (.authorized, .authorized, .denied, .authorized, true),
+            (.authorized, .authorized, .authorizedWhenInUse, .denied, true),
+            (.notDetermined, .notDetermined, .notDetermined, .notDetermined, false),
+            (.restricted, .restricted, .restricted, .restricted, false)
+        ]
+        for (camera, photos, location, microphone, expected) in cases {
+            let snapshot = DepthAnalyzerAuthorizationSnapshot(
+                camera: camera,
+                photos: photos,
+                locationAuthorizationStatus: location,
+                microphoneAuthorizationStatus: microphone
+            )
+            #expect(snapshot.hasDeniedPermission == expected)
+        }
     }
 
     @Test func cameraCaptureDataUsePreferencesDefaultToLocationOnMicrophoneOff() throws {

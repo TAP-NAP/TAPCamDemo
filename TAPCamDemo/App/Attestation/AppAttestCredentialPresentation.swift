@@ -31,18 +31,23 @@ nonisolated enum PhotoIntegrityReadiness: Equatable, Sendable {
     }
 }
 
-nonisolated enum AppAttestCredentialPresentation {
-    static let notPreparedStatusText = "Not prepared"
-    static let readyStatusText = "Ready"
-    static let resetStatusText = "Reset local credential."
-    private static let failureStatusSuffix = " failed. See diagnostics for details."
+nonisolated enum AppAttestCredentialStatus: Equatable {
+    case notPrepared
+    case ready
+    case reset
+    case failed(operation: String)
 
-    static func failureStatusText(label: String) -> String {
-        "\(label)\(failureStatusSuffix)"
-    }
-
-    static func isFailureStatusText(_ statusText: String) -> Bool {
-        statusText.hasSuffix(failureStatusSuffix)
+    var statusText: String {
+        switch self {
+        case .notPrepared:
+            "Not prepared"
+        case .ready:
+            "Ready"
+        case .reset:
+            "Reset local credential."
+        case .failed(let operation):
+            "\(operation) failed. See diagnostics for details."
+        }
     }
 }
 
@@ -50,19 +55,6 @@ nonisolated enum AppAttestBackendPresentation {
     static let configuredHTTPBackendSummary = "HTTP backend configured"
     static let unavailableBackendSummary = "Backend configuration unavailable"
     static let configuredBackendSummary = "Backend configured"
-
-    static func publicSummary(
-        backendURL: URL?,
-        backendDescription: String
-    ) -> String {
-        if backendURL != nil {
-            return configuredHTTPBackendSummary
-        }
-        if backendDescription == unavailableBackendSummary || backendDescription == "Configuration unavailable" {
-            return unavailableBackendSummary
-        }
-        return configuredBackendSummary
-    }
 }
 
 nonisolated struct AppAttestCredentialKeyIDPresentation: Equatable {

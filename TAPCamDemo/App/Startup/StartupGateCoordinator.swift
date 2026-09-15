@@ -7,16 +7,12 @@ import AVFoundation
 import Combine
 import CoreLocation
 import Foundation
+import Network
 import Photos
-
-nonisolated protocol StartupSecurityPreflightChecking: Sendable {
-    func currentRequirementStatus() -> StartupGateRequirementStatus?
-    func performRequiredPreflight() async -> StartupGateRequirementStatus
-}
 
 @MainActor
 final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManagerDelegate {
-    @Published private(set) var securityPreflightStatus: StartupGateRequirementStatus = .idle
+    @Published private(set) var networkStatus: StartupGateRequirementStatus = .idle
     @Published private(set) var cameraStatus: StartupGateRequirementStatus = .idle
     @Published private(set) var photoLibraryStatus: StartupGateRequirementStatus = .idle
     @Published private(set) var locationStatus: StartupGateRequirementStatus = .idle
@@ -24,14 +20,34 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
     @Published private(set) var requiredPermissionSnapshot: RequiredPermissionSnapshot = .unresolved
 
     private let locationManager = CLLocationManager()
-    private let securityPreflight: any StartupSecurityPreflightChecking
     private var locationAuthorizationContinuation: CheckedContinuation<CLAuthorizationStatus, Never>?
+    private var networkConnection: NWConnection?
+    private var networkMonitor: NWPathMonitor?
+    private let userDefaults: UserDefaults
+    private static let lastKnownNetworkAccessKey = "startup.lastKnownNetworkAccess"
+    private let startNetworkMonitor: (NWPathMonitor) -> Void
+    private let startNetworkConnection: (NWConnection) -> Void
 
-    init(securityPreflight: any StartupSecurityPreflightChecking = StartupBackendSecurityPreflight()) {
-        self.securityPreflight = securityPreflight
+    init(
+        userDefaults: UserDefaults = .standard,
+        startNetworkConnection: @escaping (NWConnection) -> Void = { $0.start(queue: .main) },
+        startNetworkMonitor: @escaping (NWPathMonitor) -> Void = { $0.start(queue: .main) }
+    ) {
+        self.userDefaults = userDefaults
+        self.startNetworkConnection = startNetworkConnection
+        self.startNetworkMonitor = startNetworkMonitor
         super.init()
         locationManager.delegate = self
+        // Restore presentation only; system observations replace this last-known result.
+        if let granted = userDefaults.object(forKey: Self.lastKnownNetworkAccessKey) as? Bool {
+            networkStatus = granted ? .granted : .denied
+        }
         refreshAuthorizationStatuses()
+    }
+
+    deinit {
+        networkMonitor?.cancel()
+        networkConnection?.cancel()
     }
 
     var hasCompletedRequiredStartupChecks: Bool {
@@ -42,13 +58,8 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
         statusSnapshot.hasBlockingStartupFailure
     }
 
-    var hasSecurityPreflightFailure: Bool {
-        statusSnapshot.hasSecurityPreflightFailure
-    }
-
     var statusSnapshot: StartupGateStatusSnapshot {
         StartupGateStatusSnapshot(
-            securityPreflight: securityPreflightStatus,
             camera: cameraStatus,
             photoLibrary: photoLibraryStatus,
             location: locationStatus,
@@ -56,60 +67,18 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
         )
     }
 
-    nonisolated static func hasCompletedRequiredStartupChecks(
-        securityPreflightStatus: StartupGateRequirementStatus,
-        cameraStatus: StartupGateRequirementStatus,
-        photoLibraryStatus: StartupGateRequirementStatus
-    ) -> Bool {
-        StartupGateStatusSnapshot(
-            securityPreflight: securityPreflightStatus,
-            camera: cameraStatus,
-            photoLibrary: photoLibraryStatus,
-            location: .idle,
-            microphone: .idle
-        ).hasCompletedRequiredStartupChecks
-    }
-
-    nonisolated static func hasBlockingStartupFailure(
-        securityPreflightStatus: StartupGateRequirementStatus,
-        cameraStatus: StartupGateRequirementStatus,
-        photoLibraryStatus: StartupGateRequirementStatus
-    ) -> Bool {
-        StartupGateStatusSnapshot(
-            securityPreflight: securityPreflightStatus,
-            camera: cameraStatus,
-            photoLibrary: photoLibraryStatus,
-            location: .idle,
-            microphone: .idle
-        ).hasBlockingStartupFailure
-    }
-
     func refreshAuthorizationStatuses() {
-        refreshSecurityPreflightStatus()
         refreshRequiredPermissionStatuses()
 
-        if locationStatus != .requesting,
-           locationStatus != .skipped {
+        if locationStatus != .requesting {
             locationStatus = Self.locationStatus(from: locationManager.authorizationStatus)
         }
 
-        if microphoneStatus != .requesting,
-           microphoneStatus != .skipped {
+        if microphoneStatus != .requesting {
             microphoneStatus = Self.microphoneStatus()
             if microphoneStatus == .granted {
                 CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded()
             }
-        }
-    }
-
-    /// Preserves the current frozen Network-row behavior exactly. Permission
-    /// recovery paths call the targeted methods below and never call this.
-    func refreshSecurityPreflightStatus() {
-        if securityPreflightStatus == .denied {
-            Task { await requestSecurityPreflight() }
-        } else if securityPreflightStatus != .requesting,
-                  let status = securityPreflight.currentRequirementStatus() {
-            securityPreflightStatus = status
         }
     }
 
@@ -132,50 +101,6 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
         }
     }
 
-    /// Refreshes only the row that owned a Settings boundary. Network is
-    /// intentionally absent so Required Permission Check cannot restart it.
-    func refreshAuthorizationStatus(for requirement: StartupGateRequirementKind) {
-        switch requirement {
-        case .securityPreflight:
-            refreshSecurityPreflightStatus()
-        case .camera:
-            guard cameraStatus != .requesting else { return }
-            publishCameraPermissionStatus(
-                Self.cameraPermissionStatus(
-                    from: AVCaptureDevice.authorizationStatus(for: .video)
-                )
-            )
-        case .photoLibrary:
-            guard photoLibraryStatus != .requesting else { return }
-            publishPhotoLibraryPermissionStatus(
-                Self.photoLibraryPermissionStatus(
-                    from: PHPhotoLibrary.authorizationStatus(for: .readWrite)
-                )
-            )
-        case .location:
-            guard locationStatus != .requesting,
-                  locationStatus != .skipped else { return }
-            locationStatus = Self.locationStatus(from: locationManager.authorizationStatus)
-        case .microphone:
-            guard microphoneStatus != .requesting,
-                  microphoneStatus != .skipped else { return }
-            microphoneStatus = Self.microphoneStatus()
-            if microphoneStatus == .granted {
-                CameraCaptureDataUsePreferences.enableMicrophoneDataAfterFirstAuthorizationIfNeeded()
-            }
-        }
-    }
-
-    func requestSecurityPreflight() async {
-        guard securityPreflightStatus != .requesting else {
-            return
-        }
-
-        securityPreflightStatus = .requesting
-        let status = await securityPreflight.performRequiredPreflight()
-        securityPreflightStatus = status
-    }
-
     func requestCameraAccess() async {
         guard cameraStatus != .requesting else {
             return
@@ -195,6 +120,84 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
         @unknown default:
             publishCameraPermissionStatus(.unknown)
         }
+    }
+
+    /// Resume observation only after a previous system result. First use stays
+    /// behind Network Continue, including monitor creation.
+    func refreshNetworkAccessStatus() {
+        if networkMonitor == nil {
+            guard networkStatus == .granted || networkStatus == .denied else { return }
+            startNetworkObservationIfNeeded()
+        }
+        guard let path = networkMonitor?.currentPath else { return }
+        updateNetworkAccessStatus(pathStatus: path.status, reason: path.unsatisfiedReason)
+    }
+
+    private func startNetworkObservationIfNeeded() {
+        guard networkMonitor == nil else { return }
+        let monitor = NWPathMonitor()
+        networkMonitor = monitor
+        monitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor [weak self] in
+                self?.updateNetworkAccessStatus(
+                    pathStatus: path.status, reason: path.unsatisfiedReason
+                )
+            }
+        }
+        startNetworkMonitor(monitor)
+    }
+
+    /// An explicit connection lets iOS present its first-use network prompt.
+    /// Its success or failure does not determine the permission label.
+    func requestNetworkAccess() {
+        guard networkConnection == nil else { return }
+        startNetworkObservationIfNeeded()
+        guard let url = try? AppAttestBackendConfiguration.baseURL(),
+              let host = url.host,
+              let portNumber = UInt16(exactly: url.port ?? 443),
+              let port = NWEndpoint.Port(rawValue: portNumber) else {
+            return
+        }
+
+        let connection = NWConnection(host: .init(host), port: port, using: .tcp)
+        networkConnection = connection
+        if networkStatus == .idle { networkStatus = .requesting }
+        connection.stateUpdateHandler = { [weak self, weak connection] state in
+            Task { @MainActor [weak self, weak connection] in
+                guard let self, let connection, self.networkConnection === connection else { return }
+                switch state {
+                case .ready, .failed:
+                    self.cancelNetworkAccessRequest()
+                default:
+                    break
+                }
+            }
+        }
+        startNetworkConnection(connection)
+    }
+
+    func cancelNetworkAccessRequest() {
+        networkConnection?.cancel()
+        networkConnection = nil
+        if networkStatus == .requesting { networkStatus = .idle }
+    }
+
+    func updateNetworkAccessStatus(pathStatus: NWPath.Status, reason: NWPath.UnsatisfiedReason) {
+        let status: StartupGateRequirementStatus
+        switch (pathStatus, reason) {
+        case (.satisfied, _):
+            status = .granted
+        case (.unsatisfied, .wifiDenied), (.unsatisfied, .cellularDenied):
+            status = .denied
+        default:
+            // Offline or unknown paths do not replace a known permission result.
+            return
+        }
+        if networkStatus != status {
+            networkStatus = status
+            userDefaults.set(status == .granted, forKey: Self.lastKnownNetworkAccessKey)
+        }
+        if status == .granted { cancelNetworkAccessRequest() }
     }
 
     func requestPhotoLibraryAccess() async {
@@ -246,13 +249,6 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
         }
     }
 
-    func skipLocationAccess() {
-        guard locationStatus != .requesting else {
-            return
-        }
-        locationStatus = .skipped
-    }
-
     func requestMicrophoneAccess() async {
         guard microphoneStatus != .requesting else {
             return
@@ -278,13 +274,6 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
         }
     }
 
-    func skipMicrophoneAccess() {
-        guard microphoneStatus != .requesting else {
-            return
-        }
-        microphoneStatus = .skipped
-    }
-
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -292,7 +281,7 @@ final class StartupGateCoordinator: NSObject, ObservableObject, CLLocationManage
             if let continuation = locationAuthorizationContinuation {
                 locationAuthorizationContinuation = nil
                 continuation.resume(returning: manager.authorizationStatus)
-            } else if locationStatus != .skipped {
+            } else {
                 locationStatus = Self.locationStatus(from: manager.authorizationStatus)
             }
         }

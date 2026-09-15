@@ -111,7 +111,7 @@ struct TAPLibraryView: View {
                 ContentUnavailableView(
                     "Unable to load album",
                     systemImage: "photo.on.rectangle.angled",
-                    description: albumErrorDescription(errorMessage)
+                    description: Text(LocalizedStringKey(errorMessage))
                 )
                     .frame(minHeight: 320)
             } else if visibleItems.isEmpty {
@@ -142,18 +142,6 @@ struct TAPLibraryView: View {
             }
         }
         .scrollPosition($albumScrollPosition)
-    }
-
-    private func albumErrorDescription(_ message: String) -> Text {
-        switch message {
-        case "Unable to load TAP Library. Check Photos access and try again.":
-            Text("Unable to load TAP Library. Check Photos access and try again.")
-        case "Unable to read the TAPCamDepth album. Check Photos access and try again.":
-            Text("Unable to read the TAPCamDepth album. Check Photos access and try again.")
-        default:
-            // Unknown future loader diagnostics are values, not localization keys.
-            Text(verbatim: message)
-        }
     }
 
     @ViewBuilder

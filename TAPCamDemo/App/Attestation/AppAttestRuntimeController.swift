@@ -10,7 +10,7 @@ import OSLog
 @MainActor
 final class AppAttestRuntimeController: ObservableObject {
     @Published private(set) var runtime: AppAttestRuntime
-    @Published private(set) var credentialStatusText = AppAttestCredentialPresentation.notPreparedStatusText
+    @Published private var credentialStatus: AppAttestCredentialStatus = .notPrepared
     @Published private(set) var credentialKeyIdText: String?
     @Published private(set) var isPreparingCredential = false
     @Published private(set) var isWorking = false
@@ -19,8 +19,10 @@ final class AppAttestRuntimeController: ObservableObject {
     private let credentialOperationTimeout: Duration
     private var activeOperationCount = 0
 
+    var credentialStatusText: String { credentialStatus.statusText }
+
     var isPhotoCredentialReady: Bool {
-        credentialStatusText == AppAttestCredentialPresentation.readyStatusText && credentialKeyIdText != nil
+        credentialStatus == .ready && credentialKeyIdText != nil
     }
 
     var credentialKeyIDPresentation: AppAttestCredentialKeyIDPresentation? {
@@ -34,7 +36,7 @@ final class AppAttestRuntimeController: ObservableObject {
         if isPhotoCredentialReady && hasCurrentCredentialHealthCheck {
             return .ready
         }
-        if AppAttestCredentialPresentation.isFailureStatusText(credentialStatusText) {
+        if case .failed = credentialStatus {
             return .preparationFailed
         }
         return .notReady
@@ -90,9 +92,9 @@ final class AppAttestRuntimeController: ObservableObject {
         do {
             try await resetLocalCredentialMetadata()
             credentialKeyIdText = nil
-            self.credentialStatusText = AppAttestCredentialPresentation.resetStatusText
+            credentialStatus = .reset
         } catch {
-            self.credentialStatusText = AppAttestCredentialPresentation.failureStatusText(label: "Reset local credential")
+            credentialStatus = .failed(operation: "Reset local credential")
             #if DEBUG
             TAPDiagnostics.appAttest.error("credential reset failed error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif
@@ -119,7 +121,7 @@ final class AppAttestRuntimeController: ObservableObject {
     private func prepareCredential() async throws -> AppAttestCredential {
         let credential = try await runtime.client.prepare(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
         self.userDefaults.set(true, forKey: Self.didAutoPreparePhotoCredentialKey)
-        self.credentialStatusText = AppAttestCredentialPresentation.readyStatusText
+        credentialStatus = .ready
         self.credentialKeyIdText = credential.keyId
         return credential
     }
@@ -127,7 +129,7 @@ final class AppAttestRuntimeController: ObservableObject {
     @discardableResult
     private func loadOrPrepareCredential() async throws -> AppAttestCredential {
         let credential = try await runtime.client.prepareIfNeeded(credentialName: AppAttestRuntimeDefaults.photoCredentialName)
-        self.credentialStatusText = AppAttestCredentialPresentation.readyStatusText
+        credentialStatus = .ready
         self.credentialKeyIdText = credential.keyId
         return credential
     }
@@ -202,7 +204,7 @@ final class AppAttestRuntimeController: ObservableObject {
             return true
         } catch {
             credentialKeyIdText = nil
-            credentialStatusText = AppAttestCredentialPresentation.failureStatusText(label: label)
+            credentialStatus = .failed(operation: label)
             #if DEBUG
             TAPDiagnostics.appAttest.error("credential operation failed label=\(label, privacy: .public) error=\(TAPDiagnostics.describe(error), privacy: .public)")
             #endif

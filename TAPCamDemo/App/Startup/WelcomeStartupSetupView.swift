@@ -10,7 +10,7 @@ struct WelcomeStartupSetupView: View {
     @ObservedObject var coordinator: StartupGateCoordinator
     let onContinue: () -> Void
     let onRequestPhotoLibraryAccess: () async -> Void
-    let onOpenSettings: (StartupGateRequirementKind) -> Void
+    let onOpenSettings: () -> Void
 
     var body: some View {
         ZStack {
@@ -23,82 +23,69 @@ struct WelcomeStartupSetupView: View {
                     VStack(spacing: 10) {
                         StartupRequirementRow(
                             iconName: "wifi",
-                            title: "Network Access",
-                            message: "Checks that TAPCam can reach the service before first camera setup.",
-                            status: coordinator.securityPreflightStatus,
-                            actionTitle: "Allow"
+                            title: "Network",
+                            message: "Connect to TAPCam services.",
+                            status: coordinator.networkStatus,
+                            deniedMessage: "Network access denied. Open Settings."
                         ) {
-                            Task { await coordinator.requestSecurityPreflight() }
+                            coordinator.requestNetworkAccess()
                         }
 
                         StartupRequirementRow(
                             iconName: "camera",
-                            title: "Camera Access",
-                            message: "Used to capture photos with depth data.",
+                            title: "Camera",
+                            message: "Take photos and videos.",
                             status: coordinator.cameraStatus,
-                            actionTitle: "Allow",
-                            deniedMessage: "Camera access was denied. You can change it in Settings.",
-                            restrictedMessage: "Camera access is restricted by system policy.",
-                            recoveryActionTitle: "Open Settings"
+                            deniedMessage: "Camera access denied. Open Settings.",
+                            restrictedMessage: "Camera access is restricted."
                         ) {
                             Task { await coordinator.requestCameraAccess() }
-                        } recoveryAction: {
-                            onOpenSettings(.camera)
                         }
 
                         StartupRequirementRow(
                             iconName: "photo.on.rectangle",
-                            title: "Photo Library Access",
-                            message: "Used to save and read photos.",
+                            title: "Photo Library",
+                            message: "Save photos and videos.",
                             status: coordinator.photoLibraryStatus,
-                            actionTitle: "Allow",
-                            deniedMessage: "Photo Library access was denied. You can change it in Settings.",
-                            restrictedMessage: "Photo Library access is restricted by system policy.",
-                            recoveryActionTitle: "Open Settings"
+                            deniedMessage: "Photo library access denied. Open Settings.",
+                            restrictedMessage: "Photo library access is restricted."
                         ) {
                             Task { await onRequestPhotoLibraryAccess() }
-                        } recoveryAction: {
-                            onOpenSettings(.photoLibrary)
                         }
 
                         StartupRequirementRow(
                             iconName: "location",
-                            title: "Location Access",
-                            message: "Optional. Used to write capture location into photo metadata.",
+                            title: "Location",
+                            message: "**Optional** · Save capture location.",
                             status: coordinator.locationStatus,
-                            actionTitle: "Allow",
-                            secondaryActionTitle: "Skip",
-                            deniedMessage: "Location access was denied. You can change it in Settings.",
-                            restrictedMessage: "Location access is restricted by system policy.",
-                            recoveryActionTitle: "Open Settings"
+                            deniedMessage: "**Optional** · Location access denied.",
+                            restrictedMessage: "**Optional** · Location access is restricted."
                         ) {
                             Task { await coordinator.requestLocationAccess() }
-                        } secondaryAction: {
-                            coordinator.skipLocationAccess()
-                        } recoveryAction: {
-                            onOpenSettings(.location)
                         }
 
                         StartupRequirementRow(
                             iconName: "mic",
-                            title: "Microphone Access",
-                            message: "Optional. Used to record sound for Live Photos and videos.",
+                            title: "Microphone",
+                            message: "**Optional** · Record sound when capture.",
                             status: coordinator.microphoneStatus,
-                            actionTitle: "Allow",
-                            secondaryActionTitle: "Skip",
-                            deniedMessage: "Microphone access was denied. You can change it in Settings.",
-                            restrictedMessage: "Microphone access is restricted by system policy.",
-                            recoveryActionTitle: "Open Settings"
+                            deniedMessage: "**Optional** · Microphone access denied.",
+                            restrictedMessage: "**Optional** · Microphone access is restricted."
                         ) {
                             Task { await coordinator.requestMicrophoneAccess() }
-                        } secondaryAction: {
-                            coordinator.skipMicrophoneAccess()
-                        } recoveryAction: {
-                            onOpenSettings(.microphone)
                         }
                     }
 
                     footer
+
+                    if [coordinator.networkStatus, coordinator.cameraStatus,
+                        coordinator.photoLibraryStatus, coordinator.locationStatus,
+                        coordinator.microphoneStatus].contains(.denied) {
+                        Button("Open Settings", action: onOpenSettings)
+                            .frame(maxWidth: .infinity)
+                            .buttonStyle(.bordered)
+                            .tint(.white)
+                    }
                 }
                 .padding(.horizontal, 22)
                 .padding(.top, 58)
@@ -107,6 +94,10 @@ struct WelcomeStartupSetupView: View {
         }
         .onAppear {
             coordinator.refreshAuthorizationStatuses()
+            coordinator.refreshNetworkAccessStatus()
+        }
+        .onDisappear {
+            coordinator.cancelNetworkAccessRequest()
         }
     }
 
@@ -118,7 +109,7 @@ struct WelcomeStartupSetupView: View {
 
             Text(
                 mode == .initial
-                    ? "First launch needs required setup checks before camera setup can continue."
+                    ? "Set up camera and photo library access to start taking photos."
                     : "TAPCam could not restore your previous setup. Permissions you already granted are kept."
             )
                 .font(.callout)
@@ -146,73 +137,50 @@ struct WelcomeStartupSetupView: View {
             .buttonStyle(.borderedProminent)
             .tint(.white)
             .foregroundStyle(.black)
-        } else {
-            VStack(alignment: .leading, spacing: 10) {
-                if coordinator.hasSecurityPreflightFailure {
-                    Text("Network access check failed. Check connectivity, then try again.")
-                        .font(.footnote)
-                        .foregroundStyle(.yellow)
-
-                    Button {
-                        Task { await coordinator.requestSecurityPreflight() }
-                    } label: {
-                        Label("Retry Network Access", systemImage: "arrow.clockwise")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.white)
-                }
-
-                if !coordinator.hasBlockingStartupFailure {
-                    Text("Complete network access, camera, and photo library access first. Location and microphone are optional.")
-                        .font(.footnote)
-                        .foregroundStyle(.white.opacity(0.64))
-                }
-            }
+        } else if !coordinator.hasBlockingStartupFailure {
+            Text("Camera and photo library access are required. Location and microphone are optional.")
+                .font(.footnote)
+                .foregroundStyle(.white.opacity(0.64))
         }
     }
-
 }
 
 struct StartupRequirementRow: View {
+    @ScaledMetric(relativeTo: .headline) private var contentHeight: CGFloat = 44
+
     let iconName: String
     let title: LocalizedStringKey
     let message: LocalizedStringKey
     let status: StartupGateRequirementStatus
-    let actionTitle: LocalizedStringKey
-    var secondaryActionTitle: LocalizedStringKey? = nil
     var deniedMessage: LocalizedStringKey? = nil
     var restrictedMessage: LocalizedStringKey? = nil
-    var recoveryActionTitle: LocalizedStringKey? = nil
     let primaryAction: () -> Void
-    var secondaryAction: (() -> Void)? = nil
-    var recoveryAction: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            Image(systemName: iconName)
-                .font(.system(size: 19, weight: .semibold))
-                .frame(width: 34, height: 34)
+            VStack(alignment: .leading, spacing: 6) {
+                Label {
+                    Text(title)
+                } icon: {
+                    Image(systemName: iconName)
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .labelStyle(.titleAndIcon)
+                .font(.headline)
+                .lineLimit(1)
                 .foregroundStyle(.white)
-                .background(.white.opacity(0.12), in: Circle())
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundStyle(.white)
 
                 Text(displayMessage)
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.62))
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             }
-
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             actions
         }
+        .frame(height: contentHeight)
         .padding(12)
         .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .overlay {
@@ -239,36 +207,16 @@ struct StartupRequirementRow: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.green)
                 .accessibilityLabel("Completed")
-        case .skipped:
-            Image(systemName: "minus.circle.fill")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.55))
-                .accessibilityLabel("Skipped")
         case .requesting:
             ProgressView()
                 .tint(.white)
                 .frame(width: 34, height: 34)
                 .accessibilityLabel("Requesting")
         case .denied:
-            VStack(spacing: 7) {
-                Image(systemName: "exclamationmark.circle.fill")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.yellow)
-                    .accessibilityLabel("Needs Attention")
-
-                if let recoveryActionTitle,
-                   let recoveryAction {
-                    Button {
-                        recoveryAction()
-                    } label: {
-                        Text(recoveryActionTitle)
-                    }
-                    .font(.caption2.weight(.semibold))
-                    .buttonStyle(.bordered)
-                    .tint(.white)
-                }
-            }
-            .fixedSize(horizontal: true, vertical: false)
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.yellow)
+                .accessibilityLabel("Needs Attention")
         case .restricted:
             VStack(spacing: 5) {
                 Image(systemName: "lock.circle.fill")
@@ -281,29 +229,11 @@ struct StartupRequirementRow: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Restricted by system policy")
         case .idle:
-            VStack(spacing: 7) {
-                Button {
-                    primaryAction()
-                } label: {
-                    Text(actionTitle)
-                }
+            Button("Continue", action: primaryAction)
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.bordered)
                 .tint(.white)
-
-                if let secondaryActionTitle,
-                   let secondaryAction {
-                    Button {
-                        secondaryAction()
-                    } label: {
-                        Text(secondaryActionTitle)
-                    }
-                    .font(.caption2.weight(.semibold))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.72))
-                }
-            }
-            .fixedSize(horizontal: true, vertical: false)
+                .fixedSize(horizontal: true, vertical: false)
         }
     }
 }

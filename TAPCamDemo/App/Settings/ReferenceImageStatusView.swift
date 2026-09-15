@@ -27,7 +27,7 @@ struct ReferenceImageStatusView: View {
                 .frame(width: 10, height: 10)
                 .accessibilityHidden(true)
 
-                Text("Reference Image status")
+                ScrollingStatusTitle(message: "TAPCam Protection")
                     .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
@@ -42,6 +42,7 @@ struct ReferenceImageStatusView: View {
                     Text(LocalizedStringKey(readiness.preparationActionTitle))
                 }
                 .buttonStyle(.borderless)
+                .fixedSize(horizontal: true, vertical: false)
                 .frame(minHeight: 44)
             }
 
@@ -55,9 +56,11 @@ struct ReferenceImageStatusView: View {
                         .accessibilityHidden(true)
                 }
             }
+            .fixedSize(horizontal: true, vertical: false)
             .frame(minHeight: 44)
         }
         .font(.footnote)
+        .lineLimit(1)
         .frame(minHeight: 44)
     }
 
@@ -67,5 +70,53 @@ struct ReferenceImageStatusView: View {
         case .preparationFailed: .red
         case .notReady, .preparing: .secondary
         }
+    }
+}
+
+/// Scrolls overflowing text within one line without moving surrounding controls.
+private struct ScrollingStatusTitle: View {
+    let message: LocalizedStringKey
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var textWidth: CGFloat = 0
+
+    var body: some View {
+        Text(message)
+            .lineLimit(1)
+            .hidden()
+            .overlay(alignment: .leading) {
+                GeometryReader { geometry in
+                    let overflow = max(0, textWidth - geometry.size.width)
+                    if reduceMotion {
+                        ScrollView(.horizontal) {
+                            fullText
+                        }
+                        .scrollIndicators(.hidden)
+                    } else {
+                        fullText
+                            .keyframeAnimator(
+                                initialValue: CGFloat.zero,
+                                repeating: overflow > 0 && scenePhase == .active
+                            ) { content, offset in
+                                content.offset(x: -offset)
+                            } keyframes: { _ in
+                                LinearKeyframe(0, duration: 1.5)
+                                LinearKeyframe(overflow, duration: max(0.01, overflow / 18))
+                                LinearKeyframe(overflow, duration: 1.5)
+                                MoveKeyframe(0)
+                            }
+                            .id(overflow)
+                    }
+                }
+                .clipped()
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(message))
+    }
+
+    private var fullText: some View {
+        Text(message)
+            .fixedSize()
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { textWidth = $0 }
     }
 }

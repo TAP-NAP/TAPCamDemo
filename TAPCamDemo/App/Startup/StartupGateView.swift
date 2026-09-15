@@ -19,7 +19,6 @@ struct StartupGateView: View {
     @State private var setupFact: StartupSetupFact
     @State private var initializationFact: StartupInitializationFact
     @State private var didCompleteExplicitPhotosAction = false
-    @State private var pendingSettingsRequirement: StartupGateRequirementKind?
     @State private var didCommitPostPermissionRoute = false
     @State private var cameraCapabilities: CapabilityMatrix?
     @State private var didReleaseDeferredWork = false
@@ -47,7 +46,7 @@ struct StartupGateView: View {
             initialValue: store.load()
         )
         _initializationFact = State(initialValue: initializationStore.load())
-        _startupCoordinator = StateObject(wrappedValue: StartupGateCoordinator())
+        _startupCoordinator = StateObject(wrappedValue: StartupGateCoordinator(userDefaults: userDefaults))
     }
 
     var body: some View {
@@ -57,15 +56,15 @@ struct StartupGateView: View {
                 WelcomeStartupSetupView(
                     mode: mode,
                     coordinator: startupCoordinator,
-                    onContinue: recordFrozenSetupCompletionIfReady,
+                    onContinue: completePermissionSetupIfReady,
                     onRequestPhotoLibraryAccess: requestPhotoLibraryAccess,
-                    onOpenSettings: openAppSettings(for:)
+                    onOpenSettings: openAppSettings
                 )
             case .requiredPermissionCheck:
                 RequiredPermissionCheckView(
                     coordinator: startupCoordinator,
                     onRequestPhotoLibraryAccess: requestPhotoLibraryAccess,
-                    onOpenSettings: openAppSettings(for:)
+                    onOpenSettings: openAppSettings
                 )
             case .resourceInitialization, .viewfinder:
                 postPermissionCameraRoute
@@ -183,7 +182,7 @@ struct StartupGateView: View {
         cameraCapabilities = capabilities
     }
 
-    private func recordFrozenSetupCompletionIfReady() {
+    private func completePermissionSetupIfReady() {
         guard StartupGatePolicy.firstInstallContinueAction(
             for: startupCoordinator.statusSnapshot
         ) == .enterResourceInitialization,
@@ -194,8 +193,7 @@ struct StartupGateView: View {
             return
         }
 
-        // This is deliberately not a canonical SetupReceipt. The frozen
-        // Network row cannot supply credential binding evidence.
+        // Completing permissions does not certify an App Attest credential.
         setupFact = completedFact
     }
 
@@ -206,36 +204,21 @@ struct StartupGateView: View {
         await synchronizeLibraryObservationAndCatalog()
     }
 
-    private func openAppSettings(for requirement: StartupGateRequirementKind) {
-        guard requirement != .securityPreflight,
-              let url = URL(string: UIApplication.openSettingsURLString) else {
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else {
             return
         }
-        pendingSettingsRequirement = requirement
+        startupCoordinator.cancelNetworkAccessRequest()
         openURL(url)
     }
 
     private func refreshFactsAfterActivation() {
-        let routeBeforeRefresh = route
-
-        if let pendingSettingsRequirement {
-            startupCoordinator.refreshAuthorizationStatus(
-                for: pendingSettingsRequirement
-            )
-            self.pendingSettingsRequirement = nil
-
-            // The Setup page's existing legacy Network refresh semantics are
-            // frozen. Required Permission Check never enters this branch.
-            if case .firstInstallSetup = routeBeforeRefresh {
-                startupCoordinator.refreshSecurityPreflightStatus()
-            }
-        } else {
-            switch routeBeforeRefresh {
-            case .firstInstallSetup:
-                startupCoordinator.refreshAuthorizationStatuses()
-            case .requiredPermissionCheck, .resourceInitialization, .viewfinder:
-                startupCoordinator.refreshRequiredPermissionStatuses()
-            }
+        switch route {
+        case .firstInstallSetup:
+            startupCoordinator.refreshAuthorizationStatuses()
+            startupCoordinator.refreshNetworkAccessStatus()
+        case .requiredPermissionCheck, .resourceInitialization, .viewfinder:
+            startupCoordinator.refreshRequiredPermissionStatuses()
         }
 
         Task { await synchronizeLibraryObservationAndCatalog() }

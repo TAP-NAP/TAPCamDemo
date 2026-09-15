@@ -75,9 +75,10 @@ struct AppAttestRuntime {
         self.backendURL = backendURL
         self.environment = environment
         self.backendDescription = backendDescription
-        self.backendPublicSummary = backendPublicSummary ?? AppAttestBackendPresentation.publicSummary(
-            backendURL: backendURL,
-            backendDescription: backendDescription
+        self.backendPublicSummary = backendPublicSummary ?? (
+            backendURL == nil
+                ? AppAttestBackendPresentation.configuredBackendSummary
+                : AppAttestBackendPresentation.configuredHTTPBackendSummary
         )
     }
 }

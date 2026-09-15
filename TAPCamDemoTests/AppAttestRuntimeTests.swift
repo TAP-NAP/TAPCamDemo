@@ -178,6 +178,19 @@ struct AppAttestRuntimeTests {
     }
     #endif
 
+    @Test func backendSummaryUsesConfigurationInsteadOfDescription() throws {
+        let runtime = AppAttestRuntime(
+            client: RecordingAppAttestClient(),
+            backendDescription: "Configuration unavailable"
+        )
+        #expect(runtime.backendPublicSummary == "Backend configured")
+
+        let fallback = AppAttestRuntimeFactory.fallbackRuntime(
+            error: AppAttestRuntimeTestError.unused
+        )
+        #expect(fallback.backendPublicSummary == "Backend configuration unavailable")
+    }
+
     @Test @MainActor func resetLocalCredentialReportsResetFailure() async throws {
         let runtime = AppAttestRuntime(
             client: ResetFailingAppAttestClient(),
@@ -197,6 +210,8 @@ struct AppAttestRuntimeTests {
 
         #expect(controller.credentialStatusText == "Reset local credential failed. See diagnostics for details.")
         #expect(!controller.credentialStatusText.contains(AppAttestRuntimeDefaults.photoCredentialName))
+        #expect(!controller.isPhotoCredentialReady)
+        #expect(controller.photoIntegrityReadiness == .preparationFailed)
     }
 
     @Test @MainActor func resetAndPrepareCredentialResetsThenPreparesWhenNotPrepared() async throws {
@@ -235,6 +250,15 @@ struct AppAttestRuntimeTests {
         #expect(controller.photoIntegrityReadiness == .ready)
         #expect(!controller.isPreparingCredential)
         #expect(!controller.canPreparePhotoIntegrity)
+
+        await controller.resetLocalCredential()
+
+        #expect(controller.credentialStatusText == "Reset local credential.")
+        #expect(controller.credentialKeyIdText == nil)
+        #expect(!controller.isPhotoCredentialReady)
+        #expect(controller.photoIntegrityReadiness == .notReady)
+        #expect(controller.canPreparePhotoIntegrity)
+        #expect(userDefaults.string(forKey: "TAPCamDemo.AppAttest.credentialHealthCheckToken") == nil)
     }
 
     @Test @MainActor func resetAndPrepareCredentialReportsFailedReadinessWhenHealthCheckFails() async throws {
@@ -446,6 +470,7 @@ struct AppAttestRuntimeTests {
         ])
         #expect(controller.credentialStatusText == "Ready")
         #expect(controller.credentialKeyIdText == "prepared-if-needed-key-id")
+        #expect(controller.isPhotoCredentialReady)
         #expect(controller.photoIntegrityReadiness == .notReady)
         #expect(controller.canPreparePhotoIntegrity)
     }

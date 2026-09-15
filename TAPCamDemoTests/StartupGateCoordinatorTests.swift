@@ -5,62 +5,146 @@
 
 import AVFoundation
 import Foundation
+import Network
 import Photos
 import Testing
 @testable import TAPCamDemo
 
 struct StartupGateCoordinatorTests {
+    @Test @MainActor func networkActivityWaitsForContinueAndKeepsPendingRequest() {
+        let suiteName = "StartupGateNetwork.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var monitorStarts = 0
+        var connectionStarts = 0
+        let coordinator = StartupGateCoordinator(
+            userDefaults: defaults,
+            startNetworkConnection: { _ in connectionStarts += 1 },
+            startNetworkMonitor: { _ in monitorStarts += 1 }
+        )
+
+        // Initial appearance and foregrounding must not start either network API.
+        coordinator.refreshAuthorizationStatuses()
+        coordinator.refreshNetworkAccessStatus()
+        coordinator.refreshNetworkAccessStatus()
+        #expect(monitorStarts == 0)
+        #expect(connectionStarts == 0)
+        #expect(coordinator.networkStatus == .idle)
+
+        coordinator.requestNetworkAccess()
+        #expect(monitorStarts == 1)
+        #expect(connectionStarts == 1)
+        #expect(coordinator.networkStatus == .requesting)
+        coordinator.refreshAuthorizationStatuses()
+        coordinator.refreshNetworkAccessStatus()
+        coordinator.requestNetworkAccess()
+        #expect(monitorStarts == 1)
+        #expect(connectionStarts == 1)
+        #expect(coordinator.networkStatus == .requesting)
+
+        // An interrupted unanswered prompt is not a completed authorization.
+        coordinator.cancelNetworkAccessRequest()
+        let restarted = StartupGateCoordinator(
+            userDefaults: defaults,
+            startNetworkConnection: { _ in connectionStarts += 1 },
+            startNetworkMonitor: { _ in monitorStarts += 1 }
+        )
+        restarted.refreshNetworkAccessStatus()
+        #expect(restarted.networkStatus == .idle)
+        #expect(monitorStarts == 1)
+        #expect(connectionStarts == 1)
+    }
+
+    @Test @MainActor func networkPermissionRestoresAfterAppRecreationWithoutContactingBackend() {
+        let suiteName = "StartupGateNetwork.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var monitorStarts = 0
+        var connectionStarts = 0
+        func makeCoordinator() -> StartupGateCoordinator {
+            StartupGateCoordinator(
+                userDefaults: defaults,
+                startNetworkConnection: { _ in connectionStarts += 1 },
+                startNetworkMonitor: { _ in monitorStarts += 1 }
+            )
+        }
+
+        var coordinator: StartupGateCoordinator? = makeCoordinator()
+        coordinator?.requestNetworkAccess()
+        coordinator?.updateNetworkAccessStatus(pathStatus: .satisfied, reason: .notAvailable)
+        #expect(coordinator?.networkStatus == .granted)
+
+        // Opening Settings keeps the last system result and never reconnects.
+        coordinator?.cancelNetworkAccessRequest()
+        coordinator?.refreshAuthorizationStatuses()
+        coordinator?.refreshNetworkAccessStatus()
+        #expect(coordinator?.networkStatus == .granted)
+        #expect(monitorStarts == 1)
+        #expect(connectionStarts == 1)
+
+        // Camera changes can recreate the app. Restore the label before observing.
+        coordinator = nil
+        coordinator = makeCoordinator()
+        #expect(coordinator?.networkStatus == .granted)
+        #expect(monitorStarts == 1)
+        coordinator?.refreshNetworkAccessStatus()
+        #expect(monitorStarts == 2)
+        #expect(connectionStarts == 1)
+        for reason: NWPath.UnsatisfiedReason in [.notAvailable, .vpnInactive] {
+            coordinator?.updateNetworkAccessStatus(pathStatus: .unsatisfied, reason: reason)
+            #expect(coordinator?.networkStatus == .granted)
+        }
+        for reason: NWPath.UnsatisfiedReason in [.wifiDenied, .cellularDenied] {
+            coordinator?.updateNetworkAccessStatus(pathStatus: .unsatisfied, reason: reason)
+            #expect(coordinator?.networkStatus == .denied)
+        }
+        coordinator = nil
+        coordinator = makeCoordinator()
+        #expect(coordinator?.networkStatus == .denied)
+        coordinator?.refreshNetworkAccessStatus()
+        coordinator?.updateNetworkAccessStatus(pathStatus: .satisfied, reason: .notAvailable)
+        #expect(coordinator?.networkStatus == .granted)
+        #expect(connectionStarts == 1)
+    }
+
     @Test func limitedPhotoLibraryAccessCountsAsGranted() {
         #expect(StartupGateCoordinator.photoLibraryStatus(from: .limited) == .granted)
     }
 
-    @Test func startupGatePolicyNamesRequiredAndOptionalRequirements() {
-        #expect(StartupGatePolicy.requiredRequirements == [
-            .securityPreflight,
-            .camera,
-            .photoLibrary
-        ])
-        #expect(StartupGatePolicy.optionalRequirements == [.location, .microphone])
-    }
-
-    @Test func startupGateRequiresSecurityPreflightCameraAndPhotos() {
-        let completedSnapshot = StartupGateStatusSnapshot(
-            securityPreflight: .granted,
-            camera: .granted,
+    @Test(arguments: [
+        StartupGateRequirementStatus.idle,
+        .requesting,
+        .denied,
+        .restricted
+    ])
+    func startupGateRequiresBothCameraAndPhotos(status: StartupGateRequirementStatus) {
+        let cameraBlocked = StartupGateStatusSnapshot(
+            camera: status,
             photoLibrary: .granted,
             location: .idle,
             microphone: .idle
         )
+        let photosBlocked = StartupGateStatusSnapshot(
+            camera: .granted,
+            photoLibrary: status,
+            location: .idle,
+            microphone: .idle
+        )
 
-        #expect(completedSnapshot.hasCompletedRequiredStartupChecks)
-
-        #expect(!StartupGateCoordinator.hasCompletedRequiredStartupChecks(
-            securityPreflightStatus: .idle,
-            cameraStatus: .granted,
-            photoLibraryStatus: .granted
-        ))
-        #expect(!StartupGateCoordinator.hasCompletedRequiredStartupChecks(
-            securityPreflightStatus: .granted,
-            cameraStatus: .idle,
-            photoLibraryStatus: .granted
-        ))
-        #expect(!StartupGateCoordinator.hasCompletedRequiredStartupChecks(
-            securityPreflightStatus: .granted,
-            cameraStatus: .granted,
-            photoLibraryStatus: .idle
-        ))
+        #expect(!cameraBlocked.hasCompletedRequiredStartupChecks)
+        #expect(!photosBlocked.hasCompletedRequiredStartupChecks)
+        #expect(StartupGatePolicy.firstInstallContinueAction(for: cameraBlocked) == .stayOnWelcome)
+        #expect(StartupGatePolicy.firstInstallContinueAction(for: photosBlocked) == .stayOnWelcome)
     }
 
     @Test func startupGateContinueEntersCameraReadinessOnlyAfterRequiredSetup() {
         let completedSnapshot = StartupGateStatusSnapshot(
-            securityPreflight: .granted,
             camera: .granted,
             photoLibrary: .granted,
             location: .idle,
             microphone: .idle
         )
         let incompleteSnapshot = StartupGateStatusSnapshot(
-            securityPreflight: .granted,
             camera: .idle,
             photoLibrary: .granted,
             location: .idle,
@@ -263,7 +347,7 @@ struct StartupGateCoordinatorTests {
         #expect(verified == .valid(receipt))
     }
 
-    @Test func currentHealthPreflightCompletionWritesNoCanonicalReceipt() throws {
+    @Test func currentPermissionSetupCompletionWritesNoCanonicalReceipt() throws {
         let suiteName = "StartupGateCoordinatorTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -274,10 +358,9 @@ struct StartupGateCoordinatorTests {
         )
         let fact = store.recordCurrentCompletion(
             statusSnapshot: StartupGateStatusSnapshot(
-                securityPreflight: .granted,
                 camera: .granted,
                 photoLibrary: .granted,
-                location: .skipped,
+                location: .granted,
                 microphone: .idle
             ),
             now: Date(timeIntervalSince1970: 42)
@@ -289,7 +372,7 @@ struct StartupGateCoordinatorTests {
             Issue.record("Expected current pre-release completion")
             return
         }
-        #expect(record.locationChoice == .skipped)
+        #expect(record.locationChoice == .granted)
         #expect(record.microphoneChoice == .unresolved)
     }
 
@@ -323,74 +406,15 @@ struct StartupGateCoordinatorTests {
         ))
     }
 
-    @Test func securityPreflightPolicyNamesDeadlineAndRetryWindow() {
-        let policy = StartupSecurityPreflightPolicy(
-            timeoutSeconds: 30,
-            retryDelayNanoseconds: 1_000_000_000
-        )
-        let startedAt = Date(timeIntervalSince1970: 100)
-        let deadline = policy.deadline(startedAt: startedAt)
-
-        #expect(deadline == Date(timeIntervalSince1970: 130))
-        #expect(policy.canStartAttempt(now: startedAt, deadline: deadline))
-        #expect(!policy.canStartAttempt(now: deadline, deadline: deadline))
-        #expect(policy.shouldSleepBeforeRetry(now: Date(timeIntervalSince1970: 128), deadline: deadline))
-        #expect(!policy.shouldSleepBeforeRetry(now: Date(timeIntervalSince1970: 129), deadline: deadline))
-    }
-
-    @Test func securityPreflightPolicyRejectsZeroDelayRetryLoop() {
-        let policy = StartupSecurityPreflightPolicy(
-            timeoutSeconds: 30,
-            retryDelayNanoseconds: 0
-        )
-        let startedAt = Date(timeIntervalSince1970: 100)
-        let deadline = policy.deadline(startedAt: startedAt)
-
-        #expect(!policy.shouldSleepBeforeRetry(now: startedAt, deadline: deadline))
-    }
-
-    @Test func startupGateRejectsNonGrantedSecurityPreflightStates() {
-        for securityPreflightStatus in [
-            StartupGateRequirementStatus.idle,
-            .requesting,
-            .denied,
-            .skipped
-        ] {
-            #expect(!StartupGateCoordinator.hasCompletedRequiredStartupChecks(
-                securityPreflightStatus: securityPreflightStatus,
-                cameraStatus: .granted,
-                photoLibraryStatus: .granted
-            ))
-        }
-    }
-
-    @Test func startupGateTreatsSecurityPreflightDenialAsBlocking() {
-        #expect(StartupGateStatusSnapshot(
-            securityPreflight: .denied,
-            camera: .granted,
-            photoLibrary: .granted,
-            location: .idle,
-            microphone: .idle
-        ).hasBlockingStartupFailure)
-        #expect(!StartupGateStatusSnapshot(
-            securityPreflight: .requesting,
-            camera: .granted,
-            photoLibrary: .granted,
-            location: .idle,
-            microphone: .idle
-        ).hasBlockingStartupFailure)
-    }
-
     @Test func startupGateTreatsLocationAsOptional() {
         for locationStatus in [
             StartupGateRequirementStatus.idle,
             .requesting,
             .granted,
             .denied,
-            .skipped
+            .restricted
         ] {
             let snapshot = StartupGateStatusSnapshot(
-                securityPreflight: .granted,
                 camera: .granted,
                 photoLibrary: .granted,
                 location: locationStatus,
@@ -399,6 +423,7 @@ struct StartupGateCoordinatorTests {
 
             #expect(snapshot.hasCompletedRequiredStartupChecks)
             #expect(!snapshot.hasBlockingStartupFailure)
+            #expect(StartupGatePolicy.firstInstallContinueAction(for: snapshot) == .enterResourceInitialization)
         }
     }
 
@@ -408,10 +433,9 @@ struct StartupGateCoordinatorTests {
             .requesting,
             .granted,
             .denied,
-            .skipped
+            .restricted
         ] {
             let snapshot = StartupGateStatusSnapshot(
-                securityPreflight: .granted,
                 camera: .granted,
                 photoLibrary: .granted,
                 location: .idle,
@@ -420,214 +444,8 @@ struct StartupGateCoordinatorTests {
 
             #expect(snapshot.hasCompletedRequiredStartupChecks)
             #expect(!snapshot.hasBlockingStartupFailure)
+            #expect(StartupGatePolicy.firstInstallContinueAction(for: snapshot) == .enterResourceInitialization)
         }
     }
 
-    @Test @MainActor func coordinatorReadsInjectedSecurityPreflightStatus() {
-        let coordinator = StartupGateCoordinator(
-            securityPreflight: StubSecurityPreflight(currentStatus: .granted, requestedStatus: .denied)
-        )
-
-        #expect(coordinator.securityPreflightStatus == .granted)
-    }
-
-    @Test @MainActor func coordinatorRunsInjectedSecurityPreflight() async {
-        let coordinator = StartupGateCoordinator(
-            securityPreflight: StubSecurityPreflight(currentStatus: nil, requestedStatus: .granted)
-        )
-
-        #expect(coordinator.securityPreflightStatus == .idle)
-        await coordinator.requestSecurityPreflight()
-        #expect(coordinator.securityPreflightStatus == .granted)
-    }
-
-    @Test @MainActor func coordinatorKeepsDeniedSecurityPreflightBlockingAfterRequest() async {
-        let coordinator = StartupGateCoordinator(
-            securityPreflight: StubSecurityPreflight(currentStatus: nil, requestedStatus: .denied)
-        )
-
-        await coordinator.requestSecurityPreflight()
-
-        #expect(coordinator.securityPreflightStatus == .denied)
-        #expect(!StartupGateCoordinator.hasCompletedRequiredStartupChecks(
-            securityPreflightStatus: coordinator.securityPreflightStatus,
-            cameraStatus: .granted,
-            photoLibraryStatus: .granted
-        ))
-        #expect(StartupGateCoordinator.hasBlockingStartupFailure(
-            securityPreflightStatus: coordinator.securityPreflightStatus,
-            cameraStatus: .granted,
-            photoLibraryStatus: .granted
-        ))
-    }
-
-    @Test @MainActor func requiredPermissionRefreshDoesNotStartNetworkPreflight() {
-        let preflight = RecordingSecurityPreflight(currentStatus: .denied)
-        let coordinator = StartupGateCoordinator(securityPreflight: preflight)
-
-        coordinator.refreshRequiredPermissionStatuses()
-        coordinator.refreshAuthorizationStatus(for: .camera)
-        coordinator.refreshAuthorizationStatus(for: .photoLibrary)
-
-        #expect(preflight.requestCount == 0)
-    }
-
-    @Test func backendSecurityPreflightDeniesMissingBackendURLWithoutQuery() async {
-        let clock = StartupPreflightTestClock()
-        let query = StartupPreflightAttemptRecorder(outcomes: [.granted])
-        let preflight = StartupBackendSecurityPreflight(
-            policy: StartupSecurityPreflightPolicy(timeoutSeconds: 1, retryDelayNanoseconds: 1_000_000_000),
-            healthCheckURL: { nil },
-            queryBackendHealth: { url in
-                query.record(url)
-            },
-            now: clock.now,
-            sleep: clock.sleep
-        )
-
-        let status = await preflight.performRequiredPreflight()
-
-        #expect(status == .denied)
-        #expect(query.attemptCount == 0)
-    }
-
-    @Test func backendSecurityPreflightDeniesZeroTimeoutWithoutQuery() async {
-        let clock = StartupPreflightTestClock()
-        let query = StartupPreflightAttemptRecorder(outcomes: [.granted])
-        let preflight = StartupBackendSecurityPreflight(
-            policy: StartupSecurityPreflightPolicy(timeoutSeconds: 0, retryDelayNanoseconds: 1_000_000_000),
-            healthCheckURL: { URL(string: "https://www.tapnap.net/healthz") },
-            queryBackendHealth: { url in
-                query.record(url)
-            },
-            now: clock.now,
-            sleep: clock.sleep
-        )
-
-        let status = await preflight.performRequiredPreflight()
-
-        #expect(status == .denied)
-        #expect(query.attemptCount == 0)
-        #expect(clock.elapsedSeconds == 0)
-    }
-
-    @Test func backendSecurityPreflightRetriesUntilSuccessWithinWindow() async {
-        let clock = StartupPreflightTestClock()
-        let query = StartupPreflightAttemptRecorder(outcomes: [.denied, .granted])
-        let preflight = StartupBackendSecurityPreflight(
-            policy: StartupSecurityPreflightPolicy(timeoutSeconds: 3, retryDelayNanoseconds: 1_000_000_000),
-            healthCheckURL: { URL(string: "https://www.tapnap.net/healthz") },
-            queryBackendHealth: { url in
-                query.record(url)
-            },
-            now: clock.now,
-            sleep: clock.sleep
-        )
-
-        let status = await preflight.performRequiredPreflight()
-
-        #expect(status == .granted)
-        #expect(query.attemptCount == 2)
-        #expect(clock.elapsedSeconds == 1)
-    }
-
-    @Test func backendSecurityPreflightDeniesAtTimeoutWithoutExtraSleep() async {
-        let clock = StartupPreflightTestClock()
-        let query = StartupPreflightAttemptRecorder(outcomes: [.denied, .denied, .granted])
-        let preflight = StartupBackendSecurityPreflight(
-            policy: StartupSecurityPreflightPolicy(timeoutSeconds: 2, retryDelayNanoseconds: 1_000_000_000),
-            healthCheckURL: { URL(string: "https://www.tapnap.net/healthz") },
-            queryBackendHealth: { url in
-                query.record(url)
-            },
-            now: clock.now,
-            sleep: clock.sleep
-        )
-
-        let status = await preflight.performRequiredPreflight()
-
-        #expect(status == .denied)
-        #expect(query.attemptCount == 2)
-        #expect(clock.elapsedSeconds == 1)
-    }
-}
-
-private struct StubSecurityPreflight: StartupSecurityPreflightChecking {
-    let currentStatus: StartupGateRequirementStatus?
-    let requestedStatus: StartupGateRequirementStatus
-
-    func currentRequirementStatus() -> StartupGateRequirementStatus? {
-        currentStatus
-    }
-
-    func performRequiredPreflight() async -> StartupGateRequirementStatus {
-        requestedStatus
-    }
-}
-
-private final class RecordingSecurityPreflight: StartupSecurityPreflightChecking, @unchecked Sendable {
-    private let lock = NSLock()
-    private let currentStatus: StartupGateRequirementStatus?
-    private var requests = 0
-
-    init(currentStatus: StartupGateRequirementStatus?) {
-        self.currentStatus = currentStatus
-    }
-
-    var requestCount: Int {
-        lock.withLock { requests }
-    }
-
-    func currentRequirementStatus() -> StartupGateRequirementStatus? {
-        currentStatus
-    }
-
-    func performRequiredPreflight() async -> StartupGateRequirementStatus {
-        lock.withLock { requests += 1 }
-        return .denied
-    }
-}
-
-private final class StartupPreflightTestClock: @unchecked Sendable {
-    private let lock = NSLock()
-    private var seconds: TimeInterval = 0
-
-    var elapsedSeconds: TimeInterval {
-        lock.withLock { seconds }
-    }
-
-    func now() -> Date {
-        lock.withLock { Date(timeIntervalSince1970: seconds) }
-    }
-
-    func sleep(nanoseconds: UInt64) async {
-        lock.withLock {
-            seconds += TimeInterval(nanoseconds) / 1_000_000_000
-        }
-    }
-}
-
-private final class StartupPreflightAttemptRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private let outcomes: [StartupGateRequirementStatus]
-    private var urls: [URL] = []
-
-    init(outcomes: [StartupGateRequirementStatus]) {
-        self.outcomes = outcomes
-    }
-
-    var attemptCount: Int {
-        lock.withLock { urls.count }
-    }
-
-    func record(_ url: URL) -> Bool {
-        lock.withLock {
-            urls.append(url)
-            let outcomeIndex = urls.count - 1
-            guard outcomeIndex < outcomes.count else {
-                return false
-            }
-            return outcomes[outcomeIndex] == .granted
-        }
-    }
 }

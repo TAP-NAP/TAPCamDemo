@@ -1,13 +1,64 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Capture failed. Please try again." : {
+    "**Optional** · Location access denied." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**可选** · 定位访问被拒绝。"
+          }
+        }
+      }
+    },
+    "**Optional** · Location access is restricted." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**可选** · 定位访问受系统限制。"
+          }
+        }
+      }
+    },
+    "**Optional** · Microphone access denied." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**可选** · 麦克风访问被拒绝。"
+          }
+        }
+      }
+    },
+    "**Optional** · Microphone access is restricted." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**可选** · 麦克风访问受系统限制。"
+          }
+        }
+      }
+    },
+    "**Optional** · Record sound when capture." : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "拍摄失败，请重试。"
+            "value" : "**可选** · 拍摄时录音。"
+          }
+        }
+      }
+    },
+    "**Optional** · Save capture location." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "**可选** · 保存拍摄位置。"
           }
         }
       }
@@ -109,17 +160,6 @@
         }
       }
     },
-    "Adds capture location to photo metadata." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将拍摄位置写入照片元数据。"
-          }
-        }
-      }
-    },
     "Adjust exposure compensation." : {
       "localizations" : {
         "zh-Hans" : {
@@ -147,28 +187,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "茜红"
-          }
-        }
-      }
-    },
-    "Allow" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "允许"
-          }
-        }
-      }
-    },
-    "Always allowed" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "始终允许"
           }
         }
       }
@@ -248,16 +266,6 @@
         }
       }
     },
-    "Authorized or Limited Access is required to save and browse." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保存和浏览需要照片图库的完全访问权限或有限访问权限。"
-          }
-        }
-      }
-    },
     "Auto" : {
       "localizations" : {
         "zh-Hans" : {
@@ -310,23 +318,12 @@
         }
       }
     },
-    "Camera Access" : {
-      "extractionState" : "manual",
+    "Camera access denied. Open Settings." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "相机访问"
-          }
-        }
-      }
-    },
-    "Camera access is required for capture and the viewfinder." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "拍摄和显示取景画面需要相机权限。"
+            "value" : "相机访问被拒绝，请打开设置。"
           }
         }
       }
@@ -342,7 +339,17 @@
         }
       }
     },
-    "Camera access is restricted by system policy." : {
+    "Camera access is required to capture." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄需要相机权限。"
+          }
+        }
+      }
+    },
+    "Camera access is restricted." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -352,12 +359,12 @@
         }
       }
     },
-    "Camera access was denied. You can change it in Settings." : {
+    "Camera and photo library access are required. Location and microphone are optional." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "相机访问已被拒绝。你可以在“设置”中更改权限。"
+            "value" : "需要相机和照片图库权限；定位和麦克风为可选项。"
           }
         }
       }
@@ -503,6 +510,17 @@
         }
       }
     },
+    "Capture failed. Please try again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄失败，请重试。"
+          }
+        }
+      }
+    },
     "Capture Prioritization" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -546,17 +564,6 @@
         }
       }
     },
-    "Checks that TAPCam can reach the service before first camera setup." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在首次设置相机前，检查 TAPCam 能否连接服务。"
-          }
-        }
-      }
-    },
     "Cloud view projects valid depth pixels through camera intrinsics into a lightweight camera-coordinate point preview. It is a point cloud, not cloud storage, cloud compute, or a semantic word cloud." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -568,22 +575,23 @@
         }
       }
     },
-    "Complete network access, camera, and photo library access first. Location and microphone are optional." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请先完成网络、相机和照片图库访问设置。位置与麦克风为可选权限。"
-          }
-        }
-      }
-    },
     "Completed" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "已完成"
+          }
+        }
+      }
+    },
+    "Connect to TAPCam services." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接 TAPCam 服务。"
           }
         }
       }
@@ -859,16 +867,6 @@
         }
       }
     },
-    "First launch needs required setup checks before camera setup can continue." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "首次启动需要完成必要的设置检查，之后才能继续配置相机。"
-          }
-        }
-      }
-    },
     "First media catalog is ready" : {
       "localizations" : {
         "zh-Hans" : {
@@ -905,17 +903,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "闪光灯不可用"
-          }
-        }
-      }
-    },
-    "Get Permission" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "获取权限"
           }
         }
       }
@@ -1399,33 +1386,13 @@
         }
       }
     },
-    "Location Access" : {
+    "Location" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "位置访问"
-          }
-        }
-      }
-    },
-    "Location access is restricted by system policy." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "定位访问受系统限制。"
-          }
-        }
-      }
-    },
-    "Location access was denied. You can change it in Settings." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "定位访问已被拒绝。你可以在“设置”中更改权限。"
+            "value" : "位置"
           }
         }
       }
@@ -1463,37 +1430,6 @@
         }
       }
     },
-    "Microphone Access" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "麦克风访问"
-          }
-        }
-      }
-    },
-    "Microphone access is restricted by system policy." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "麦克风访问受系统限制。"
-          }
-        }
-      }
-    },
-    "Microphone access was denied. You can change it in Settings." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "麦克风访问已被拒绝。你可以在“设置”中更改权限。"
-          }
-        }
-      }
-    },
     "Near %@" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1515,33 +1451,24 @@
         }
       }
     },
-    "Network Access" : {
+    "Network" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "网络访问"
+            "value" : "网络"
           }
         }
       }
     },
-    "Network access check failed. Check connectivity, then try again." : {
+    "Network access denied. Open Settings." : {
+      "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "网络访问检查失败。请检查网络连接后重试。"
-          }
-        }
-      }
-    },
-    "Network, Location, and Microphone do not participate in this check." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "本次仅检查相机和照片图库权限，不检查网络、定位或麦克风。"
+            "value" : "网络访问被拒绝，请打开设置。"
           }
         }
       }
@@ -1723,39 +1650,6 @@
         }
       }
     },
-    "Optional. Used to record sound for Live Photos and videos." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可选。用于为实况照片和视频录制声音。"
-          }
-        }
-      }
-    },
-    "Optional. Used to write capture location into photo metadata." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可选。用于将拍摄位置写入照片元数据。"
-          }
-        }
-      }
-    },
-    "Orange Yellow" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "橙黄"
-          }
-        }
-      }
-    },
     "Other Settings" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1798,33 +1692,43 @@
         }
       }
     },
-    "Photo Library Access" : {
+    "Photo Library" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "照片图库访问"
+            "value" : "照片库"
           }
         }
       }
     },
-    "Photo Library access is restricted by system policy." : {
+    "Photo library access denied. Open Settings." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "照片图库访问受系统限制。"
+            "value" : "照片库访问被拒绝，请打开设置。"
           }
         }
       }
     },
-    "Photo Library access was denied. You can change it in Settings." : {
+    "Photo library access is required." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "照片图库访问已被拒绝。你可以在“设置”中更改权限。"
+            "value" : "保存和浏览需要照片库权限。"
+          }
+        }
+      }
+    },
+    "Photo library access is restricted." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片库访问受系统限制。"
           }
         }
       }
@@ -2130,27 +2034,6 @@
         }
       }
     },
-    "Records sound for Live Photos and videos." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为实况照片和视频录制声音。"
-          }
-        }
-      }
-    },
-    "Reference Image status" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "参考影像状态"
-          }
-        }
-      }
-    },
     "Registered depth unavailable" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2320,23 +2203,13 @@
         }
       }
     },
-    "Retry Network Access" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "重试网络访问"
-          }
-        }
-      }
-    },
-    "Return to Viewfinder on Resume" : {
+    "Return to Viewfinder" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "从后台返回时进入取景窗"
+            "value" : "返回取景窗"
           }
         }
       }
@@ -2403,6 +2276,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "RGB 与 Apple 配对深度"
+          }
+        }
+      }
+    },
+    "Save photos and videos." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存照片和视频。"
           }
         }
       }
@@ -2483,6 +2367,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已选中，已就绪"
+          }
+        }
+      }
+    },
+    "Set up camera and photo library access to start taking photos." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置相机和照片图库权限，即可开始拍照。"
           }
         }
       }
@@ -2949,27 +2843,6 @@
         }
       }
     },
-    "Skip" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "跳过"
-          }
-        }
-      }
-    },
-    "Skipped" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已跳过"
-          }
-        }
-      }
-    },
     "Speed" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3066,6 +2939,17 @@
         }
       }
     },
+    "Take photos and videos." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拍摄照片和视频。"
+          }
+        }
+      }
+    },
     "TAP Library" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3092,6 +2976,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TAPCam 目标位置"
+          }
+        }
+      }
+    },
+    "TAPCam Protection" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TAPCam保护状态"
           }
         }
       }
@@ -3418,39 +3312,6 @@
         }
       }
     },
-    "Use When Capturing" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "拍摄时使用"
-          }
-        }
-      }
-    },
-    "Used to capture photos with depth data." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用于拍摄包含深度数据的照片。"
-          }
-        }
-      }
-    },
-    "Used to save and read photos." : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "用于保存和读取照片。"
-          }
-        }
-      }
-    },
     "Valid depth" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3525,13 +3386,13 @@
         }
       }
     },
-    "While using app" : {
+    "Yellow" : {
       "extractionState" : "manual",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用 App 时允许"
+            "value" : "黄色"
           }
         }
       }
