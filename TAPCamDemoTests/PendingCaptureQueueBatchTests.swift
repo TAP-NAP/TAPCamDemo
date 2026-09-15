@@ -7,7 +7,7 @@ struct PendingCaptureQueueBatchTests {
     func workerScansOncePerBatchAndVisitsFailuresOnce(captureCount: Int) async throws {
         let root = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
-        let fileManager = QueueScanCountingFileManager()
+        let fileManager = QueueScanCountingFileManager(queueRoot: root)
         let store = TAPPendingCaptureStore(rootURL: root, fileManager: fileManager)
         let ids = (0..<captureCount).map { "capture-\($0)" }
         for (index, id) in ids.enumerated() {
@@ -44,7 +44,7 @@ struct PendingCaptureQueueBatchTests {
     func newIngestPreemptsRetryBacklogDuringWorker(video: Bool) async throws {
         let root = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
-        let fileManager = QueueScanCountingFileManager()
+        let fileManager = QueueScanCountingFileManager(queueRoot: root)
         let store = TAPPendingCaptureStore(rootURL: root, fileManager: fileManager)
         for id in ["first", "retry"] {
             _ = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
@@ -146,7 +146,7 @@ struct PendingCaptureQueueBatchTests {
     @Test @MainActor func librarySnapshotPartitionsOneQueueRead() async throws {
         let root = try TAPCamDemoTestFixtures.makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
-        let fileManager = QueueScanCountingFileManager()
+        let fileManager = QueueScanCountingFileManager(queueRoot: root)
         let store = TAPPendingCaptureStore(rootURL: root, fileManager: fileManager)
         for (index, id) in ["pending", "exported"].enumerated() {
             _ = try await store.ingest(TAPCamDemoTestFixtures.samplePendingArtifact(
@@ -216,15 +216,23 @@ private actor QueueBatchStages: TAPPendingCaptureSigning, TAPPendingCaptureExpor
 /// recovery scan. Individual readRecord calls do not enumerate this directory.
 private final class QueueScanCountingFileManager: FileManager, @unchecked Sendable {
     private let lock = NSLock()
+    private let queueRoot: URL
     private var scans = 0
     var recordScans: Int { lock.withLock { scans } }
+
+    init(queueRoot: URL) {
+        self.queueRoot = queueRoot.standardizedFileURL
+        super.init()
+    }
 
     override func contentsOfDirectory(
         at url: URL,
         includingPropertiesForKeys keys: [URLResourceKey]?,
         options mask: FileManager.DirectoryEnumerationOptions = []
     ) throws -> [URL] {
-        if mask.contains(.skipsHiddenFiles) { lock.withLock { scans += 1 } }
+        if url.standardizedFileURL == queueRoot, mask.contains(.skipsHiddenFiles) {
+            lock.withLock { scans += 1 }
+        }
         return try super.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: mask)
     }
 }
